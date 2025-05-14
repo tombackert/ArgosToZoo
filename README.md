@@ -1,20 +1,24 @@
 # ArgosRLink
 
-What? ArgosRLink provides an interface between the ARGoS robot simulator and popular Multi-Agent Reinforcement Learning (MARL) libraries. It enables realistic swarm robotics experiments to be integrated into modern reinforcement learning workflows.
+[**Conept**](#concept) | [**Milestones**](#project-milestones) | [**Resources**](#resources)
 
-Goal? Proof of Concept. Successfully simulate a collective transportation behavior with 5 agents in ARGoS using MARL via an external Python policy.
+**ArgosRLink** bridges the ARGoS sim & popular MARL libraries, enabling seamless integration of swarm robotics experiments into modern Reinforcement Learning (RL) workflows.
+
+## Overview
+
+- 🚀 Project Goal: Successfully simulate a collective transportation behavior with 5 agents in ARGoS using MARL via an external Python policy
+
+- 🏎️ The architecture is based on asynchronous communication between the C++-based ARGoS simulator and a Python MARL environment using ZeroMQ as the communication bridge.
+
+## Tech Stack
+
++ 🤖 ARGoS (C++): Simulates the environment and physical agents.
++ 🛜 ZeroMQ (IPC): Handles message passing between C++ and Python.
++ 🧠 PettingZoo (Python): Wraps the environment to interface with MARL libraries.
 
 ## Concept
 
-The architecture is based on asynchronous communication between the C++-based ARGoS simulator and a Python MARL environment using ZeroMQ as the communication bridge.
-
-Architecture Overview
-
-+ ARGoS (C++): Simulates the environment and physical agents.
-+ ZeroMQ (IPC): Handles message passing between C++ and Python.
-+ PettingZoo (Python): Wraps the environment to interface with MARL libraries.
-
-Data Flow
+Data in ArgosRLink flows as follows:
 
 1. ARGoS simulates the environment and computes observations, rewards, and done flags.
 2. Serialization (C++ → Python): Data is serialized (e.g., JSON) and sent via ZeroMQ.
@@ -27,7 +31,7 @@ Data Flow
 ![ARGoS-Python Communication Architecture](docs/argos-python-flowchart.png)
 
 
-Planned Implementation
+## Planned Implementation
 
 + Build a C++ ARGoS module that communicates over ZeroMQ.
 + Develop a Python wrapper conforming to the PettingZoo Parallel API.
@@ -42,6 +46,8 @@ Planned Implementation
 ## Resources
 
 + Technical References
+    + ARGoS
+        + [ARGoS: a modular, parallel, multi-engine simulator for multi-robot systems](https://doi.org/10.1007/s11721-012-0072-5)
     + PettingZoo Parallel API
         + https://pettingzoo.farama.org/api/parallel/
         + https://arxiv.org/pdf/2009.14471
@@ -51,3 +57,6 @@ Planned Implementation
         + https://docs.ray.io/en/latest/rllib/external-envs.html
     + ZeroMQ
         + https://zeromq.org/
++ Research
+    + [Reinforcement learning for swarm robotics: An overview of applications, algorithms and simulators](https://doi.org/10.1016/j.cogr.2023.07.004)
+    
