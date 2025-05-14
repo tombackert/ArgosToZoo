@@ -1,6 +1,6 @@
 # ArgosRLink
 
-[**Conept**](#concept) | [**Milestones**](#project-milestones) | [**Resources**](#resources)
+[**Concept**](#concept) | [**Milestones**](#project-milestones) | [**Resources**](#resources)
 
 **ArgosRLink** bridges the ARGoS sim & popular MARL libraries, enabling seamless integration of swarm robotics experiments into modern Reinforcement Learning (RL) workflows.
 
