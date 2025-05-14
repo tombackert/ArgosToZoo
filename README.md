@@ -24,9 +24,7 @@ Data Flow
 6. ARGoS applies the actions and advances the simulation.
 7. The loop continues…
 
-Visual
-
-*implement diagram here*
+![ARGoS-Python Communication Architecture](docs/argos-python-flowchart.png)
 
 
 Planned Implementation
