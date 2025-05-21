@@ -39,9 +39,55 @@ Data in ArgosRLink flows as follows:
 + Integrate with a MARL library (e.g., RLlib or TorchRL).
 + Train and validate the policy to solve the task successfully.
 
+
 ## Project Milestones
 
-*tba*
+- **M1 – Infrastructure & Prototype (approx. 30 h)**
+    - Set up ARGoS development environment (build, plugins, example scenarios)
+    - Implement C++ skeleton for ZeroMQ communication (sender/receiver)
+    - First end-to-end message: Observation → Python → Acknowledgement back
+
+- **M2 – Python Wrapper & PettingZoo Environment (approx. 40 h)**
+    - Develop an `ArgosEnv` class according to the PettingZoo Parallel API
+    - Map JSON messages to observation/reward/done dictionaries
+    - Unit tests for wrapper functions and ZeroMQ handshake (→ Communication channel needs to work)
+
+- **M3 – Benchmark Scenario & MARL Integration (approx. 50 h)**
+    - Define and configure the collective transport task with 5 agents in ARGoS
+    - Integrate a MARL algorithm (e.g., PPO via RLlib or TorchRL)
+    - Initial training runs: base hyperparameters, logging, TensorBoard setup
+
+- **M4 – Evaluation, Optimization & Documentation (approx. 30 h)**
+    - Analyze training progress (success criteria, stability)
+    - Optimize communication pipeline (buffering, latency) and parameter tuning
+    - Create final documentation (architecture diagrams, protocol specification)
+
+## Agile Approach
+
+- **Product Backlog & User Stories**
+    - Create a Kanban board (GitHub Issues) with stories
+    - Ongoing prioritization and maintenance of the backlog
+- **Two-Week Sprints**
+    - Sprint length: 2 weeks (~25 h)
+    - Sprint Planning: Select and estimate 2–3 stories at the start of each sprint
+    - Sprint Review & Retrospective: Brief reflection and process adjustments at the end of each sprint
+- **Definition of Done (DoD)**
+    - Criteria per story:
+        - Functional code compiles successfully
+        - Basic documentation and code comments are updated
+        - Example script demonstrates the functionality
+        - Issue in backlog marked as “Done”
+- **Sprint Retrospective**
+    - Short retrospective (max. 15 min) after each sprint:
+        - What went well?
+        - Where were the blockers?
+        - What improvements will we carry into the next sprint?
+        - Feedback
+        - Planning new tasks for next sprint
+- **Meeting Structure**
+    - Bi-weekly Sprint Reviews: Every two weeks, a review session is held to evaluate progress, demonstrate implemented features, and plan the next sprint based on feedback
+    - Weekly Check-in: Short status meetings take place in the alternating weeks to provide updates, discuss blockers, and align with the supervisor
+
 
 ## Resources
 
