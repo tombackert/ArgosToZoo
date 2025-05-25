@@ -1,8 +1,8 @@
-# ArgosRLink
+# ArgosToZoo
 
 [**Concept**](#concept) | [**Milestones**](#project-milestones) | [**Resources**](#resources)
 
-**ArgosRLink** bridges the ARGoS sim & popular MARL libraries, enabling seamless integration of swarm robotics experiments into modern Reinforcement Learning (RL) workflows.
+**ArgosToZoo** bridges the ARGoS sim & popular MARL libraries, enabling seamless integration of swarm robotics experiments into modern Reinforcement Learning (RL) workflows.
 
 ## Overview
 
@@ -18,7 +18,7 @@
 
 ## Concept
 
-Data in ArgosRLink flows as follows:
+Data in ArgosToZoo flows as follows:
 
 1. ARGoS simulates the environment and computes observations, rewards, and done flags.
 2. Serialization (C++ → Python): Data is serialized (e.g., JSON) and sent via ZeroMQ.
