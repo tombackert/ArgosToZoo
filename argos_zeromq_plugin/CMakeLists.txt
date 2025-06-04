@@ -1,41 +1,23 @@
 cmake_minimum_required(VERSION 3.10)
 project(ARGoSZeroMQBridge)
 
-set(CMAKE_CXX_STANDARD 17) # Or a suitable C++ standard
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find ARGoS3 package
-# This assumes ARGoS3 was installed in a way CMake can find it
-# (e.g., CMAKE_PREFIX_PATH set or ARGoS3 provides CMake config files)
+# Find ARGoS, ZeroMQ, and other dependencies
 find_package(ARGoS REQUIRED)
-
-# Find ZeroMQ package (libzmq)
-# This might require ZeroMQ to be installed system-wide or providing a find script
 find_package(cppzmq REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
-# Find nlohmann_json (header-only, often included as a submodule or fetched by CMake)
-# Option 1: If installed system-wide or via CMake package
-# find_package(nlohmann_json 3.2.0 REQUIRED) # Version might vary
-# Option 2: If included directly (e.g., as a header in a known path or submodule)
-# For simplicity, assume headers are accessible via include_directories.
-# If using FetchContent or add_subdirectory for nlohmann_json:
-# include(FetchContent)
-# FetchContent_Declare(
-#   nlohmann_json
-#   GIT_REPOSITORY https://github.com/nlohmann/json.git
-#   GIT_TAG v3.11.2 # Or desired version
-# )
-# FetchContent_MakeAvailable(nlohmann_json)
+# Include directories for ARGoS
+set(HOMEBREW_INCLUDE_DIR "/opt/homebrew/include" CACHE PATH "Path to Homebrew include directory")
+set(LUA_INCLUDE_DIR "/opt/homebrew/Cellar/lua/5.4.7/include/lua" CACHE PATH "Path to Lua include directory")
 
 include_directories(
     ${ARGOS3_INCLUDE_DIRS}
     ${ZeroMQ_INCLUDE_DIRS}
-    /opt/homebrew/include
-    /opt/homebrew/Cellar/lua/5.4.7/include/lua
-    # Add path to nlohmann/json headers if not found by find_package
-    # For example, if it's in a 'third_party' subdirectory:
-    # ${CMAKE_CURRENT_SOURCE_DIR}/third_party/json/single_include
+    ${HOMEBREW_INCLUDE_DIR}
+    ${LUA_INCLUDE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
