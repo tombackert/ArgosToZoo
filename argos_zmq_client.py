@@ -71,7 +71,7 @@ def main_loop(socket):
         while True:
             # Get current simulation time
             sim_time_response = get_simulation_time(socket)
-            print()
+            logging.info("----")  # Separator for readability
             if sim_time_response and sim_time_response.get("status") == "success":
                 logging.info(f"Current ARGoS Simulation Time: {sim_time_response.get('time')}")
             else:
