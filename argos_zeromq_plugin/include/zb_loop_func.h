@@ -14,18 +14,16 @@
 #include <vector>
 #include <map>
 
-// Use the argos namespace to avoid typing argos:: repeatedly
 using namespace argos;
-// Use nlohmann::json with a shorter alias
 using json = nlohmann::json;
 
-class CZeroMQBridgeLoopFunc : public CLoopFunctions {
+class CZeroMQBridgeLoopFunc : public argos::CLoopFunctions {
 
 public:
     CZeroMQBridgeLoopFunc();
     virtual ~CZeroMQBridgeLoopFunc();
 
-    virtual void Init(TConfigurationNode& t_node);
+    virtual void Init(argos::TConfigurationNode& t_node);
     virtual void Reset();
     virtual void Destroy();
     virtual void PostStep();
@@ -47,7 +45,7 @@ private:
     // Add more command processors as needed
 
     // Helper to safely get a robot's embodied entity
-    CEmbodiedEntity* GetRobotEmbodiedEntity(const std::string& robot_id);
+    argos::CEmbodiedEntity* GetRobotEmbodiedEntity(const std::string& robot_id);
 };
 
 #endif // ZEROMQ_BRIDGE_LOOP_FUNC_H
