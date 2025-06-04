@@ -12,6 +12,7 @@ find_package(ARGoS REQUIRED)
 # Find ZeroMQ package (libzmq)
 # This might require ZeroMQ to be installed system-wide or providing a find script
 find_package(cppzmq REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 # Find nlohmann_json (header-only, often included as a submodule or fetched by CMake)
 # Option 1: If installed system-wide or via CMake package
@@ -35,7 +36,7 @@ include_directories(
     # Add path to nlohmann/json headers if not found by find_package
     # For example, if it's in a 'third_party' subdirectory:
     # ${CMAKE_CURRENT_SOURCE_DIR}/third_party/json/single_include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include # For our own header
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 link_directories(/usr/local/lib/argos3)
@@ -47,11 +48,8 @@ add_library(zeromq_bridge SHARED
 
 # Link libraries
 target_link_libraries(zeromq_bridge PRIVATE
-    argos3core_simulator       # ARGoS core library (actual library name)
-    argos3plugin_simulator_footbot # Foot-Bot plugin library (für RTTI und Implementierung)
-    cppzmq                    # ZeroMQ C++ binding
-    # nlohmann_json::nlohmann_json # If found as a CMake target
+    argos3core_simulator
+    argos3plugin_simulator_footbot
+    cppzmq                    
+    nlohmann_json::nlohmann_json 
 )
-
-# Optional: Set install path if you plan to install the plugin
-# install(TARGETS zeromq_bridge DESTINATION ${ARGOS3_INSTALL_PLUGIN_DIR})
