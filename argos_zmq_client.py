@@ -80,7 +80,8 @@ def main_loop(socket):
             # Get all robot IDs
             ids_response = get_all_robot_ids(socket)
             if ids_response and ids_response.get("status") == "success":
-                robot_ids = ids_response.get("ids",)
+
+                robot_ids = ids_response.get("ids")
                 logging.info(f"Available robot IDs: {robot_ids}")
 
                 # Get state for each robot
