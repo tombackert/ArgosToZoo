@@ -88,6 +88,36 @@ Data in ArgosToZoo flows as follows:
     - Bi-weekly Sprint Reviews: Every two weeks, a review session is held to evaluate progress, demonstrate implemented features, and plan the next sprint based on feedback
     - Weekly Check-in: Short status meetings take place in the alternating weeks to provide updates, discuss blockers, and align with the supervisor
 
+## Running the Plugin
+
+1. **Compile the Plugin**
+
+    Navigate to the build directory and run the following commands:
+
+    ```sh
+    cd argos_zeromq_plugin/build
+    cmake ..
+    make
+    ```
+
+2. **Start the ARGoS Simulator (C++ Server)**
+
+    Go to an ARGoS experiment directory and start ARGoS with the desired configuration:
+
+    ```sh
+    cd argos3-examples
+    argos3 -c experiments/diffusion_10.argos
+    ```
+
+3. **Start the Python Client**
+
+    Start the Python client from the main directory:
+
+    ```sh
+    python argos_zmq_client.py
+    ```
+
+This establishes communication between ARGoS and Python, allowing you to control the simulation.
 
 ## Resources
 
@@ -105,4 +135,3 @@ Data in ArgosToZoo flows as follows:
         + https://zeromq.org/
 + Research
     + [Reinforcement learning for swarm robotics: An overview of applications, algorithms and simulators](https://doi.org/10.1016/j.cogr.2023.07.004)
-    
