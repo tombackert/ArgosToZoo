@@ -102,7 +102,7 @@ Data in ArgosToZoo flows as follows:
 
 2. **Start the ARGoS Simulator (C++ Server)**
 
-    Go an ARGoS experiment directory and start ARGoS with the desired configuration:
+    Go to an ARGoS experiment directory and start ARGoS with the desired configuration:
 
     ```sh
     cd argos3-examples
