@@ -1,47 +1,74 @@
 #include "my_ipc_controller.h"
 #include <argos3/core/utility/logging/argos_log.h>
 
-/*
- * Konstruktor: Initialisiert die Member-Variablen mit Nullzeigern.
- * Dies ist eine gute Praxis, um undefiniertes Verhalten zu vermeiden.
- */
+
 CMyIPCController::CMyIPCController() :
-   m_pcWheels(NULL) {}
+   m_pcWheels(NULL),
+   m_ptZmqContext(NULL),
+   m_ptZmqSocket(NULL) {}
 
 /*
  * Initialisierungsmethode.
  */
 void CMyIPCController::Init(TConfigurationNode& t_node) {
    try {
-      /*
-       * Hole den Zeiger auf den 'differential_steering' Aktuator.
-       * Der String "differential_steering" muss mit dem Tag in der <actuators>-Sektion
-       * der.argos-Datei übereinstimmen. ARGoS stellt diesen Zeiger zur Verfügung,
-       * nachdem es die XML-Konfiguration geparst hat.[15]
-       * Wenn der Aktuator in der XML-Datei nicht deklariert wurde, wird hier eine Ausnahme geworfen.
-       */
       m_pcWheels = GetActuator<CCI_DifferentialSteeringActuator>("differential_steering");
+
+      // 1. Initialisiere den ZeroMQ-Kontext
+      m_ptZmqContext = new zmq::context_t(1);
+
+      // 2. Erstelle einen REP(ly)-Socket
+      m_ptZmqSocket = new zmq::socket_t(*m_ptZmqContext, ZMQ_REP);
+
+      // 3. Binde den Socket an einen Port. ARGoS agiert als Server.
+      m_ptZmqSocket->bind("tcp://*:5555");
+      LOG << "[INFO] IPC Controller initialisiert und an tcp://*:5555 gebunden" << std::endl;
+
+   } catch(CARGoSException& ex) {
+      THROW_ARGOSEXCEPTION_NESTED("Error initializing CMyIPCController", ex);
+   } catch(zmq::error_t& ex) {
+      THROW_ARGOSEXCEPTION("ZeroMQ error: " << ex.what());
    }
-   catch(CARGoSException& ex) {
-      THROW_ARGOSEXCEPTION_NESTED("Error while initializing CMyIPCController", ex);
-   }
-   /*
-    * Zukünftig könnten hier Parameter für die IPC-Verbindung (z.B. Port, IP-Adresse)
-    * aus dem <params>-Abschnitt der XML-Datei geparst werden.[15, 16]
-    */
 }
 
 /*
  * Die Hauptlogikschleife.
  */
 void CMyIPCController::ControlStep() {
-   /*
-    * Für diesen Prototyp implementieren wir ein einfaches Verhalten, um die
-    * Funktionsfähigkeit zu testen: Der Roboter dreht sich im Kreis.
-    * Später wird hier die IPC-Logik implementiert: Warten auf einen Befehl von Python,
-    * diesen Befehl parsen und die Radgeschwindigkeiten entsprechend setzen.
-    */
-   m_pcWheels->SetLinearVelocity(5.0, -5.0);
+   try {
+      // 1. Warte auf eine Anfrage vom Python-Client (blockierend)
+      zmq::message_t request;
+      m_ptZmqSocket->recv(request, zmq::recv_flags::none);
+
+      // 2. Parse die Anfrage als JSON
+      json command = json::parse(request.to_string());
+      
+      // 3. Extrahiere die Geschwindigkeitswerte
+      Real fLeftSpeed = command.value("left_speed", 0.0);
+      Real fRightSpeed = command.value("right_speed", 0.0);
+
+      // 4. Setze die Geschwindigkeit der Räder
+      m_pcWheels->SetLinearVelocity(fLeftSpeed, fRightSpeed);
+
+      // 5. Erstelle eine Antwort (z.B. mit Status)
+      json response;
+      response["status"] = "ok";
+      // Hier könnten später Sensordaten hinzugefügt werden
+      // response["proximity"] =...;
+
+      // 6. Sende die Antwort zurück an den Python-Client
+      m_ptZmqSocket->send(zmq::buffer(response.dump()), zmq::send_flags::none);
+
+   } catch(json::parse_error& ex) {
+      LOGERR << " JSON parse error: " << ex.what() << std::endl;
+      // Sende eine Fehlermeldung zurück
+      json error_response;
+      error_response["status"] = "error";
+      error_response["message"] = "Invalid JSON format";
+      m_ptZmqSocket->send(zmq::buffer(error_response.dump()), zmq::send_flags::none);
+   } catch(zmq::error_t& ex) {
+      LOGERR << " ZeroMQ error: " << ex.what() << std::endl;
+   }
 }
 
 /*
@@ -56,7 +83,16 @@ void CMyIPCController::Reset() {
  * Später müsste hier z.B. die IPC-Verbindung (Socket) sauber geschlossen werden.
  */
 void CMyIPCController::Destroy() {
-   // Ressourcen freigeben.
+   // Räume die ZeroMQ-Ressourcen sauber auf
+   if (m_ptZmqSocket) {
+      m_ptZmqSocket->close();
+      delete m_ptZmqSocket;
+  }
+  if (m_ptZmqContext) {
+      m_ptZmqContext->close();
+      delete m_ptZmqContext;
+  }
+  LOG << "[INFO] IPC Controller zerstört." << std::endl;
 }
 
 /*
