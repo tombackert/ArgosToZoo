@@ -9,10 +9,15 @@
 #include <argos3/core/control_interface/ci_controller.h>
 #include <argos3/plugins/robots/generic/control_interface/ci_differential_steering_actuator.h>
 
-/*
- * Alle ARGoS-Klassen sind im 'argos'-Namespace.
- */
+// ZeroMQ Header (C++-Wrapper)
+#include <zmq.hpp>
+
+// JSON Header
+#include "json.hpp"
+
 using namespace argos;
+using json = nlohmann::json;
+
 
 /*
  * Die Definition der Controller-Klasse.
@@ -56,7 +61,9 @@ private:
     /* Zeiger auf den Aktuator für die Räder */
     CCI_DifferentialSteeringActuator* m_pcWheels;
 
-    /* Hier könnten zukünftig weitere Zeiger auf Sensoren oder IPC-relevante Member stehen */
+    // ZeroMQ-Member
+    zmq::context_t* m_ptZmqContext;
+    zmq::socket_t* m_ptZmqSocket;
 };
 
 #endif
