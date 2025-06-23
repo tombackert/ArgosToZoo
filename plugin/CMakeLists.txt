@@ -6,6 +6,8 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 find_package(ARGoS REQUIRED)
+find_package(cppzmq REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 include_directories(${ARGOS_INCLUDE_DIRS})
 
