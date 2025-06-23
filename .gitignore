@@ -1,3 +1,16 @@
-*.vscode
-*/build
-*.DS_Store
+# Build-Artefakte
+/build/
+/plugin/build/
+
+# Python-Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Editor-spezifische Dateien
+.vscode/
+.idea/
+
+# macOS-spezifische Dateien
+.DS_Store

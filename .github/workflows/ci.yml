@@ -1,0 +1,66 @@
+# Name des GitHub Actions-Workflows
+name: ArgosToZoo CI
+
+# Löst den Workflow bei jedem Push oder Pull Request auf den 'main'-Branch aus
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Definiert einen einzelnen Job namens 'build-and-test'
+  build-and-test:
+    # Führt den Job auf dem neuesten macOS-Runner aus, um Konsistenz mit Ihrer lokalen Entwicklungsumgebung zu gewährleisten
+    runs-on: macos-latest
+
+    steps:
+      # Schritt 1: Code aus dem Repository auschecken
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Schritt 2: C++-Abhängigkeiten mit Homebrew installieren
+      - name: Install C++ Dependencies
+        run: |
+          brew install argos3
+          brew install zeromq
+          brew install clang-format
+          brew install nlohmann-json
+
+      # Schritt 3: Python-Umgebung einrichten
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Schritt 4: Python-Abhängigkeiten installieren
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Schritt 5: C++-Code mit clang-format linten
+      - name: Lint C++ code
+        run: |
+          find plugin -iname *.h -o -iname *.cpp | xargs clang-format --dry-run --Werror
+
+      # Schritt 6: Python-Code mit flake8 linten
+      - name: Lint Python code
+        run: |
+          # --count: Zeigt die Gesamtzahl der Fehler an
+          # --show-source: Zeigt den fehlerhaften Code an
+          # --statistics: Zeigt die Anzahl der Vorkommnisse pro Fehlercode an
+          flake8. --count --show-source --statistics
+
+      # Schritt 7: C++-Plugin kompilieren
+      - name: Build C++ Plugin
+        run: |
+          mkdir build
+          cd build
+          cmake..
+          make
+
+      # Schritt 8: Python-Tests mit pytest ausführen
+      - name: Run Python Tests
+        run: |
+          pytest
