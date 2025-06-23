@@ -1,17 +1,11 @@
 #include <argos3/plugins/robots/foot-bot/simulator/footbot_entity.h>
 #include "zb_loop_func.h"
 
-/****************************************/
-/****************************************/
-
 CZeroMQBridgeLoopFunc::CZeroMQBridgeLoopFunc() :
     m_pzmqContext(nullptr),
     m_pzmqServerSocket(nullptr),
     m_nZmqPort(5555) // Default port, can be overridden by XML
 {}
-
-/****************************************/
-/****************************************/
 
 CZeroMQBridgeLoopFunc::~CZeroMQBridgeLoopFunc() {
     // Destroy() should handle cleanup, but as a fallback:
@@ -20,17 +14,13 @@ CZeroMQBridgeLoopFunc::~CZeroMQBridgeLoopFunc() {
         delete m_pzmqServerSocket;
     }
     if (m_pzmqContext) {
-        // m_pzmqContext->shutdown(); // cppzmq context is RAII, usually not needed to call shutdown explicitly before delete
         delete m_pzmqContext;
     }
 }
 
-/****************************************/
-/****************************************/
-
 void CZeroMQBridgeLoopFunc::Init(TConfigurationNode& t_node) {
     try {
-        // Parse parameters from the.argos file
+        // Parse parameters from the .argos file
         TConfigurationNode& tParams = GetNode(t_node, "params");
         GetNodeAttributeOrDefault(tParams, "zmq_port", m_nZmqPort, m_nZmqPort);
 
@@ -50,24 +40,15 @@ void CZeroMQBridgeLoopFunc::Init(TConfigurationNode& t_node) {
     }
 }
 
-/****************************************/
-/****************************************/
-
 void CZeroMQBridgeLoopFunc::Reset() {
     LOG << " Reset called." << std::endl;
     // Reset any custom state if necessary
 }
 
-/****************************************/
-/****************************************/
-
 void CZeroMQBridgeLoopFunc::Destroy() {
     LOG << " Destroying server..." << std::endl;
     if (m_pzmqServerSocket) {
         try {
-            // It's good practice to unbind before closing, though close should handle it.
-            // std::string bind_addr = "tcp://*:" + std::to_string(m_nZmqPort);
-            // m_pzmqServerSocket->unbind(bind_addr.c_str()); // May not be necessary / supported by all ZMQ versions for close
             m_pzmqServerSocket->close();
         } catch (zmq::error_t& e) {
             LOGERR << " ZeroMQ error during socket close: " << e.what() << std::endl;
@@ -78,9 +59,6 @@ void CZeroMQBridgeLoopFunc::Destroy() {
 
     if (m_pzmqContext) {
         try {
-            // For cppzmq, deleting the context usually handles termination.
-            // m_pzmqContext->shutdown(); // Explicit shutdown
-            // m_pzmqContext->close();    // Then close
         } catch (zmq::error_t& e) {
              LOGERR << " ZeroMQ error during context shutdown/close: " << e.what() << std::endl;
         }
@@ -89,9 +67,6 @@ void CZeroMQBridgeLoopFunc::Destroy() {
     }
     LOG << " Server destroyed." << std::endl;
 }
-
-/****************************************/
-/****************************************/
 
 void CZeroMQBridgeLoopFunc::PostStep() {
     if (!m_pzmqServerSocket) return; // Socket not initialized
@@ -158,9 +133,6 @@ void CZeroMQBridgeLoopFunc::PostStep() {
         }
     }
 }
-
-/****************************************/
-/****************************************/
 
 // Helper method implementations
 
