@@ -127,7 +127,7 @@ This establishes communication between ARGoS and Python, allowing you to control
     - What went well?
     - Where were the blockers?
     - What improvements will we carry into the next sprint?
-    - Feedback
+    - Feedback & co
     - Planning new tasks for next sprint
 - **Meeting Structure**
   - Bi-weekly Sprint Reviews: Every two weeks, a review session is held to evaluate progress, demonstrate implemented features, and plan the next sprint based on feedback
