@@ -1,14 +1,14 @@
 #ifndef MY_IPC_CONTROLLER_H
 #define MY_IPC_CONTROLLER_H
 
-// ARGoS-Header
+// ARGoS headers
 #include <argos3/core/control_interface/ci_controller.h>
 #include <argos3/plugins/robots/generic/control_interface/ci_differential_steering_actuator.h>
 
-// ZeroMQ Header (C++-Wrapper)
+// ZeroMQ header (C++ wrapper)
 #include <zmq.hpp>
 
-// JSON Header
+// JSON header
 #include "nlohmann/json.hpp"
 
 using namespace argos;
@@ -16,52 +16,51 @@ using json = nlohmann::json;
 
 
 /*
- * Die Definition der Controller-Klasse.
- * Sie erbt von CCI_Controller.
+ * The controller class definition.
+ * It inherits from CCI_Controller.
  */
 class CMyIPCController : public CCI_Controller {
 
 public:
-    /* Klassenkonstruktor */
+    /* Class constructor */
     CMyIPCController();
 
-    /* Klassendestruktor */
+    /* Class destructor */
     virtual ~CMyIPCController() {}
 
     /*
-     * Initialisierungsmethode.
-     * Wird einmalig aufgerufen, wenn der Controller einem Roboter zugewiesen wird.
-     * Hier werden Zeiger auf Aktuatoren und Sensoren geholt und Parameter aus der XML-Datei gelesen.
+     * Initialization method.
+     * It is called once when the controller is assigned to a robot.
      */
     virtual void Init(TConfigurationNode& t_node);
 
     /*
-     * Die Hauptlogikschleife des Controllers.
-     * Wird in jedem Simulationsschritt einmal aufgerufen.
+     * The main control loop of the controller.
+     * It is called once per simulation step.
      */
     virtual void ControlStep();
 
     /*
-     * Setzt den internen Zustand des Controllers zurück.
-     * Wird aufgerufen, wenn im GUI der Reset-Knopf gedrückt wird.
+     * Resets the internal state of the controller.
+     * It is called when the reset button is pressed in the GUI.
      */
     virtual void Reset();
 
     /*
-     * Methode zur Bereinigung.
-     * Wird aufgerufen, wenn der Controller zerstört wird (z.B. am Ende des Experiments).
+     * Cleanup method.
+     * It is called when the controller is destroyed (e.g., at the end of an experiment).
      */
     virtual void Destroy();
 
 private:
-    /* Zeiger auf den Aktuator für die Räder */
+    /* Pointer to the wheel actuator */
     CCI_DifferentialSteeringActuator* m_pcWheels;
 
-    // ZeroMQ-Member
+    // ZeroMQ members
     zmq::context_t* m_ptZmqContext;
     zmq::socket_t* m_ptZmqSocket;
 
-    // Port für die Kommunikation
+    // Communication port
     std::string m_sPort;
 };
 

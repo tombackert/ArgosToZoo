@@ -9,24 +9,24 @@ CMyIPCController::CMyIPCController() :
    m_sPort("5555") {}
 
 /*
- * Initialisierungsmethode.
+ * Initialization method.
  */
 void CMyIPCController::Init(TConfigurationNode& t_node) {
    try {
       m_pcWheels = GetActuator<CCI_DifferentialSteeringActuator>("differential_steering");
 
-      // Lese den Port aus dem <params>-Abschnitt der XML-Datei.
-      // Wenn nicht vorhanden, wird der Standardwert "5555" verwendet.
+      // Read the port from the <params> section of the XML file.
+      // If not present, the default value "5555" is used.
       GetNodeAttributeOrDefault(t_node, "port", m_sPort, m_sPort);
 
-      // Initialisiere ZeroMQ
+      // Initialize ZeroMQ
       m_ptZmqContext = new zmq::context_t(1);
       m_ptZmqSocket = new zmq::socket_t(*m_ptZmqContext, ZMQ_REP);
 
-      // Binde den Socket an die dynamische Adresse
+      // Bind the socket to the dynamic address
       std::string strBindAddr = "tcp://*:" + m_sPort;
       m_ptZmqSocket->bind(strBindAddr);
-      LOG << "[INFO] IPC Controller initialisiert und an " << strBindAddr << " gebunden" << std::endl;
+      LOG << "[INFO] IPC Controller initialized and bound to " << strBindAddr << std::endl;
 
    } catch(CARGoSException& ex) {
       THROW_ARGOSEXCEPTION_NESTED("Error initializing CMyIPCController", ex);
@@ -36,18 +36,18 @@ void CMyIPCController::Init(TConfigurationNode& t_node) {
 }
 
 /*
- * Die Hauptlogikschleife.
+ * The main logic loop.
  */
 void CMyIPCController::ControlStep() {
    try {
-      // 1. Versuche, eine Nachricht NICHT-BLOCKIEREND zu empfangen.
+      // Try to receive a message in a non-blocking way.
       zmq::message_t request;
       auto received = m_ptZmqSocket->recv(request, zmq::recv_flags::dontwait);
 
-      // 2. Prüfe, ob eine Nachricht empfangen wurde.
-      // `received` ist ein std::optional. Es hat nur dann einen Wert, wenn recv erfolgreich war.
+      // Check if a message was received.
+      // `received` is an std::optional and has a value only if recv was successful.
       if (received.has_value() && received.value() > 0) {
-         // Eine Nachricht wurde empfangen, verarbeite sie.
+         // A message was received, process it.
          json command = json::parse(request.to_string());
          Real fLeftSpeed = command.value("left_speed", 0.0);
          Real fRightSpeed = command.value("right_speed", 0.0);
@@ -57,8 +57,8 @@ void CMyIPCController::ControlStep() {
          response["status"] = "ok";
          m_ptZmqSocket->send(zmq::buffer(response.dump()), zmq::send_flags::none);
       }
-      // 3. Wenn keine Nachricht empfangen wurde, tue nichts und gib die Kontrolle sofort an ARGoS zurück.
-      // Das verhindert das Einfrieren der Simulation.
+      // If no message was received, do nothing and return control to ARGoS.
+      // This prevents the simulation from freezing.
 
    } catch(json::parse_error& ex) {
       LOGERR << " JSON parse error: " << ex.what() << std::endl;
@@ -67,7 +67,7 @@ void CMyIPCController::ControlStep() {
       error_response["message"] = "Invalid JSON format";
       m_ptZmqSocket->send(zmq::buffer(error_response.dump()), zmq::send_flags::none);
    } catch(zmq::error_t& ex) {
-      // Ignoriere "Resource temporarily unavailable"-Fehler, die bei dontwait normal sind.
+      // Ignore "Resource temporarily unavailable" errors, which are expected with non-blocking sockets.
       if (ex.num()!= ETIMEDOUT && ex.num()!= EAGAIN) {
          LOGERR << " ZeroMQ error: " << ex.what() << std::endl;
       }
@@ -75,18 +75,17 @@ void CMyIPCController::ControlStep() {
 }
 
 /*
- * Reset-Methode. Für diesen einfachen Controller ist nichts zurückzusetzen.
+ * Reset method.
  */
 void CMyIPCController::Reset() {
-   // Hier könnten Zustandsvariablen zurückgesetzt werden.
+   // Nothing to reset in this simple controller.
 }
 
 /*
- * Destroy-Methode. Für diesen einfachen Controller ist nichts zu bereinigen.
- * Später müsste hier z.B. die IPC-Verbindung (Socket) sauber geschlossen werden.
+ * Destroy method.
  */
 void CMyIPCController::Destroy() {
-   // Räume die ZeroMQ-Ressourcen sauber auf
+   // Clean up ZeroMQ resources
    if (m_ptZmqSocket) {
       m_ptZmqSocket->close();
       delete m_ptZmqSocket;
@@ -95,14 +94,11 @@ void CMyIPCController::Destroy() {
       m_ptZmqContext->close();
       delete m_ptZmqContext;
   }
-  LOG << "[INFO] IPC Controller zerstört." << std::endl;
+  LOG << "[INFO] IPC Controller destroyed." << std::endl;
 }
 
 /*
- * DIES IST DER ENTSCHEIDENDE SCHRITT FÜR DIE REGISTRIERUNG!
- * Das Makro REGISTER_CONTROLLER bindet die C++-Klasse CMyIPCController an den
- * String-Bezeichner "my_ipc_controller".
- * Dieser Bezeichner wird dann in der.argos-Datei als XML-Tag verwendet, um diesen
- * Controller zu instanziieren. Das Makro muss in der.cpp-Datei stehen.[7, 15]
+ * The macro REGISTER_CONTROLLER binds the C++ class CMyIPCController to the
+ * string identifier "my_ipc_controller"
  */
 REGISTER_CONTROLLER(CMyIPCController, "my_ipc_controller")

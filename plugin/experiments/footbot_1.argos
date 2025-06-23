@@ -18,15 +18,13 @@
 
     <my_ipc_controller id="ipc_0"
                        library="build/controllers/libmy_ipc_controller.dylib"
-                       port="5555">
+                       >
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
       <sensors />
-      <params />
+      <params port="5555"/>
     </my_ipc_controller>
-
-    
 
   </controllers>
 
@@ -39,8 +37,6 @@
       <body position="-2.0,0,0" orientation="0,0,0" />
       <controller config="ipc_0" />
     </foot-bot>
-
-  
 
   </arena>
 

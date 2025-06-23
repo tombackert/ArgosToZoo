@@ -2,21 +2,21 @@ import zmq
 import json
 
 def main():
-    """Ein Client, der zwei ARGoS-Roboter gleichzeitig steuert."""
+    """A client that controls multiple ARGoS robots simultaneously."""
     context = zmq.Context()
-    ports = ["5555"]
+    ports = ["5555", "5556", "5557", "5558", "5559"]
     sockets = []
 
-    print("Verbinde mit ARGoS-Servern...")
+    print("Connecting to ARGoS servers...")
     for port in ports:
         socket = context.socket(zmq.REQ)
         socket.connect(f"tcp://localhost:{port}")
         sockets.append(socket)
-        print(f"  - Verbunden mit Port {port}")
+        print(f"  - Connected to port {port}")
 
     try:
         while True:
-            cmd = input("Kommando (w/a/s/d/stop/exit): ").strip().lower()
+            cmd = input("Command (w/a/s/d/stop/exit): ").strip().lower()
 
             if cmd == "exit":
                 break
@@ -33,23 +33,23 @@ def main():
             elif cmd == 'stop':
                 left_speed, right_speed = 0.0, 0.0
             else:
-                print("Unbekanntes Kommando.")
+                print("Unknown command.")
                 continue
 
             command = {"left_speed": left_speed, "right_speed": right_speed}
 
-            # Sende das Kommando an alle Roboter
+            # Send the command to all robots
             for i, socket in enumerate(sockets):
-                print(f"Sende Kommando an Roboter {i} auf Port {ports[i]}: {command}")
+                print(f"Sending command to robot {i} on port {ports[i]}: {command}")
                 socket.send_json(command)
 
-            # Warte auf die Antwort von allen Robotern
+            # Wait for the response from all robots
             for i, socket in enumerate(sockets):
                 response = socket.recv_json()
-                print(f"Antwort von Roboter {i} erhalten: {response}")
+                print(f"Response from robot {i} received: {response}")
             
     except KeyboardInterrupt:
-        print("\nClient wird beendet.")
+        print("\nExiting client.")
     finally:
         for socket in sockets:
             socket.close()
