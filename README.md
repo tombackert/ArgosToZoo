@@ -1,153 +1,127 @@
 # ArgosToZoo
 
-[**Concept**](#concept) | [**How to run**](#running-the-plugin) | [**Milestones**](#project-management) | [**Resources**](#resources)
+[**Concept**](#concept) | [**How to Run**](#how-to-run) | [**Milestones**](#project-management) | [**Resources**](#resources)
 
-**ArgosToZoo** bridges the ARGoS sim & popular MARL libraries, enabling seamless integration of swarm robotics experiments into modern Reinforcement Learning (RL) workflows.
+**ArgosToZoo** bridges the high-performance ARGoS simulator with popular Multi-Agent Reinforcement Learning (MARL) libraries. It enables the seamless integration of complex swarm robotics experiments into modern Python-based RL workflows.
 
 ## Overview
 
-- 🚀 Project Goal: Successfully simulate a collective transportation behavior with 5 agents in ARGoS using MARL via an external Python policy
-
-- 🏎️ The architecture is based on asynchronous communication between the C++-based ARGoS simulator and a Python MARL environment using ZeroMQ as the communication bridge.
+- 🚀 **Project Goal:** To create a robust bridge for controlling ARGoS agents using an external Python policy, with the ultimate aim of simulating collective behaviors (e.g., collective transport) trained with MARL.
+- 🏎️ **Architecture:** The system is built on a decoupled client–server architecture. Each robot in ARGoS runs a C++ controller that acts as a ZeroMQ server (REP). An external Python script acts as the client (REQ), sending commands and receiving state information. This ensures the high-performance simulation is handled by C++, while flexible decision-making resides in Python.
 
 ## Tech Stack
 
-- 🤖 ARGoS (C++): Simulates the environment and physical agents.
-- 🛜 ZeroMQ (IPC): Handles message passing between C++ and Python.
-- 🧠 PettingZoo (Python): Wraps the environment to interface with MARL libraries.
+- 🤖 **ARGoS (C++):** Simulates the environment and the physics of the agents.
+- 🛜 **ZeroMQ (C++ & Python):** Handles high-performance, low-latency message passing between the C++ simulator and the Python controller via the REQ/REP pattern.
+- 📄 **nlohmann/json (C++):** A lightweight, header-only library for serializing and deserializing data sent over the ZeroMQ bridge.
+- 🧠 **PettingZoo (Python):** The target framework for wrapping the simulation environment to make it compatible with standard MARL algorithms.
 
 ## Concept
 
 Data in ArgosToZoo flows as follows:
 
-1. ARGoS simulates the environment and computes observations, rewards, and done flags.
-2. Serialization (C++ → Python): Data is serialized (e.g., JSON) and sent via ZeroMQ.
-3. PettingZoo wrapper receives the data and formats it into standard MARL-compatible dictionaries.
-4. MARL algorithm (e.g., via RLlib or TorchRL) selects actions for each agent.
-5. Serialization (Python → C++): Actions are sent back over ZeroMQ.
-6. ARGoS applies the actions and advances the simulation.
-7. The loop continues…
+1. **ARGoS (Server):** The C++ controller for each agent starts a ZeroMQ REP server on a unique port and waits for commands. To prevent simulation freezing, it checks for messages non-blockingly.
+2. **Python (Client):** The Python script starts ZeroMQ REQ clients, connecting to each agent's port.
+3. **Action Selection:** The Python script (initially manual input, later a MARL policy) decides on an action for each agent.
+4. **Serialization (Python → C++):** Actions (e.g., wheel speeds) are formatted into a JSON string and sent as a request to the corresponding ARGoS agent.
+5. **Execution:** The C++ controller receives the JSON request, parses it, and applies actions to the robot’s actuators.
+6. **Serialization (C++ → Python):** The controller sends a JSON confirmation reply (e.g., `{"status": "ok"}`), which can be extended to include sensor data/observations.
+7. **Loop:** The cycle continues.
 
 ![ARGoS-Python Communication Architecture](docs/argos-python-flowchart.png)
 
-## Planned Implementation
+## How to Run
 
-- Build a C++ ARGoS module that communicates over ZeroMQ.
-- Develop a Python wrapper conforming to the PettingZoo Parallel API.
-- Define a minimal Collective Transport Task as a benchmark scenario.
-- Integrate with a MARL library (e.g., RLlib or TorchRL).
-- Train and validate the policy to solve the task successfully.
+These instructions are for macOS (Apple Silicon/ARM64).
 
-## Running the Plugin
+### 1. Install Dependencies
 
-1. **Compile the Plugin**
+**Core Dependencies (via Homebrew):**
+```bash
+brew install argos3
+brew install zeromq
+brew install cmake
+```
 
-    Navigate to the build directory and run the following commands:
+**Python Packages:**
+```bash
+pip install pyzmq pettingzoo
+```
 
-    ```sh
-    cd argos_zeromq_plugin/build
-    cmake ..
-    make
-    ```
+**C++ JSON Library:**
+1. Download `json.hpp` from the [nlohmann/json releases](https://github.com/nlohmann/json/releases).
+2. Create directory `plugin/common/`.
+3. Place `json.hpp` in `plugin/common/`.
 
-2. **Set the Plugin Path for ARGoS**
+### 2. Compile the Plugin
 
-    Before starting ARGoS, make sure the plugin library path is set so ARGoS can find the compiled plugin. You can do this by setting the `ARGOS_PLUGIN_PATH` environment variable (replace the path with your actual build directory):
+Run all commands from the project root (`ArgosToZoo/`):
+```bash
+rm -rf build              # (Optional) Clean previous builds
+mkdir build && cd build   # Create and enter build directory
+cmake ..                  # Configure project
+make                      # Compile the C++ controller plugin
+```
+The compiled library `libmy_ipc_controller.dylib` will be in `build/controllers/`.
 
-    ```sh
-    export ARGOS_PLUGIN_PATH="$/path/to/argos_zeromq_plugin/build"
-    ```
+### 3. Run the Experiment
 
-    Alternatively, add this line to your shell profile (e.g., `.zshrc` or `.bashrc`) for convenience.
+Open two terminals in the project root:
 
-3. **Start the ARGoS Simulator (C++ Server)**
+**Terminal 1: ARGoS Simulator (C++ Server)**
+```bash
+argos3 -c experiments/test.argos
+```
 
-    Go to an ARGoS experiment directory and start ARGoS with the desired configuration:
+**Terminal 2: Python Client**
+```bash
+python manual_control.py
+```
 
-    ```sh
-    cd argos3-examples
-    argos3 -c experiments/diffusion_10.argos
-    ```
-
-4. **Start the Python Client**
-
-    Start the Python client from the main directory:
-
-    ```sh
-    python argos_zmq_client.py
-    ```
-
-This establishes communication between ARGoS and Python, allowing you to control the simulation.
+Control the robots by typing `w`, `a`, `s`, `d`, or `stop` in the Python terminal.
 
 ## Project Management
 
 <details>
 <summary>🏁 Milestones</summary>
 
-- **M1 – Infrastructure & Prototype (approx. 30 h)**
-  - Set up ARGoS development environment (build, plugins, example scenarios)
-  - Implement C++ skeleton for ZeroMQ communication (sender/receiver)
-  - First end-to-end message: Observation → Python → Acknowledgement back
+**M1 – Infrastructure & Prototype (≈30 h)**
+- Set up ARGoS dev environment (build, plugins, scenarios)
+- Implement C++ ZeroMQ skeleton (REQ/REP)
+- First end-to-end message: observation → Python → acknowledgment
 
-- **M2 – Python Wrapper & PettingZoo Environment (approx. 40 h)**
-  - Develop an `ArgosEnv` class according to the PettingZoo Parallel API
-  - Map JSON messages to observation/reward/done dictionaries
-  - Unit tests for wrapper functions and ZeroMQ handshake (→ Communication channel needs to work)
+**M2 – Python Wrapper & PettingZoo (≈40 h)**
+- Develop `ArgosEnv` according to PettingZoo Parallel API
+- Map JSON to obs/reward/done dictionaries
+- Unit tests for wrapper & handshake
 
-- **M3 – Benchmark Scenario & MARL Integration (approx. 50 h)**
-  - Define and configure the collective transport task with 5 agents in ARGoS
-  - Integrate a MARL algorithm (e.g., PPO via RLlib or TorchRL)
-  - Initial training runs: base hyperparameters, logging, TensorBoard setup
+**M3 – Benchmark Scenario & MARL (≈50 h)**
+- Define collective transport task with 5 agents
+- Integrate MARL algorithm (e.g., PPO via RLlib/TorchRL)
+- Initial training: hyperparameters, logging, TensorBoard
 
-- **M4 – Evaluation, Optimization & Documentation (approx. 30 h)**
-  - Analyze training progress (success criteria, stability)
-  - Optimize communication pipeline (buffering, latency) and parameter tuning
-  - Create final documentation (architecture diagrams, protocol specification)
+**M4 – Evaluation & Documentation (≈30 h)**
+- Analyze training progress & stability
+- Optimize communication pipeline
+- Final documentation (diagrams, protocol specs)
 
 </details>
 
 <details>
 <summary>🌀 Agile Approach</summary>
 
-- **Product Backlog & User Stories**
-  - Create a Kanban board (GitHub Issues) with stories
-  - Ongoing prioritization and maintenance of the backlog
-- **Two-Week Sprints**
-  - Sprint length: 2 weeks (~25 h)
-  - Sprint Planning: Select and estimate 2–3 stories at the start of each sprint
-  - Sprint Review & Retrospective: Brief reflection and process adjustments at the end of each sprint
-- **Definition of Done (DoD)**
-  - Criteria per story:
-    - Functional code compiles successfully
-    - Basic documentation and code comments are updated
-    - Example script demonstrates the functionality
-    - Issue in backlog marked as “Done”
-- **Sprint Retrospective**
-  - Short retrospective (max. 15 min) after each sprint:
-    - What went well?
-    - Where were the blockers?
-    - What improvements will we carry into the next sprint?
-    - Feedback
-    - Planning new tasks for next sprint
-- **Meeting Structure**
-  - Bi-weekly Sprint Reviews: Every two weeks, a review session is held to evaluate progress, demonstrate implemented features, and plan the next sprint based on feedback
-  - Weekly Check-in: Short status meetings take place in the alternating weeks to provide updates, discuss blockers, and align with the supervisor
+- **Product Backlog & Stories:** Kanban board (GitHub Issues)
+- **Two-Week Sprints (~25 h):** Plan, review, retrospectives
+- **Definition of Done:** Code compiles, docs updated, example works, issue closed
+- **Meeting Structure:** Bi-weekly reviews & weekly check-ins
 
 </details>
 
 ## Resources
 
-- Technical References
-  - ARGoS
-    - [ARGoS: a modular, parallel, multi-engine simulator for multi-robot systems](https://doi.org/10.1007/s11721-012-0072-5)
-  - PettingZoo Parallel API
-    - [PettingZoo Parallel API Documentation](https://pettingzoo.farama.org/api/parallel/)
-    - [PettingZoo: Multi-Agent Reinforcement Learning Environments](https://arxiv.org/pdf/2009.14471)
-  - Ray RLlib
-    - [RLlib Documentation](https://docs.ray.io/en/latest/rllib/index.html)
-    - [Multi-Agent Environments in RLlib](https://docs.ray.io/en/latest/rllib/multi-agent-envs.html)
-    - [External Environments in RLlib](https://docs.ray.io/en/latest/rllib/external-envs.html)
-  - ZeroMQ
-    - [ZeroMQ Official Website](https://zeromq.org/)
-- Research
-  - [Reinforcement learning for swarm robotics: An overview of applications, algorithms and simulators](https://doi.org/10.1016/j.cogr.2023.07.004)
+- **ARGoS:** [Modular, parallel, multi-engine simulator](https://doi.org/10.1007/s11721-012-0072-5)
+- **PettingZoo Parallel API:** [Documentation](https://pettingzoo.farama.org/api/parallel/) | [Paper](https://arxiv.org/pdf/2009.14471)
+- **Ray RLlib:** [RLlib Docs](https://docs.ray.io/en/latest/rllib/index.html) | [Multi-Agent](https://docs.ray.io/en/latest/rllib/multi-agent-envs.html) | [External Env](https://docs.ray.io/en/latest/rllib/external-envs.html)
+- **ZeroMQ:** [Official Site](https://zeromq.org/)
+
+- **Research:** [Swarm robotics RL overview](https://doi.org/10.1016/j.cogr.2023.07.004)
