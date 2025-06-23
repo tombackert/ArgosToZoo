@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(ARGoSZeroMQBridge)
+project(ArgosToZoo)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,7 +25,7 @@ link_directories(/usr/local/lib/argos3)
 
 # Define the plugin library
 add_library(zeromq_bridge SHARED
-    src/zb_loop_func.cpp
+    loop_functions/zb_loop_func.cpp
 )
 
 # Link libraries
