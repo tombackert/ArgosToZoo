@@ -4,7 +4,9 @@ import json
 def main():
     """A client that controls multiple ARGoS robots simultaneously."""
     context = zmq.Context()
-    ports = ["5555", "5556", "5557", "5558", "5559"]
+    ports = ["5555"]
+    #ports = ["5555", "5556", "5557", "5558", "5559"]
+    
     sockets = []
 
     print("Connecting to ARGoS servers...")

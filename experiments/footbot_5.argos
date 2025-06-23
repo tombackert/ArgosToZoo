@@ -17,7 +17,7 @@
  <controllers>
 
     <my_ipc_controller id="ipc_0"
-                       library="build/controllers/libmy_ipc_controller.dylib"
+                       library="build/src/plugin/controllers/libmy_ipc_controller.dylib"
                        >
       <actuators>
         <differential_steering implementation="default" />
@@ -27,7 +27,7 @@
     </my_ipc_controller>
     
     <my_ipc_controller id="ipc_1"
-                       library="build/controllers/libmy_ipc_controller.dylib"
+                       library="build/src/plugin/controllers/libmy_ipc_controller.dylib"
                        >
       <actuators>
         <differential_steering implementation="default" />
@@ -37,7 +37,7 @@
     </my_ipc_controller>
 
     <my_ipc_controller id="ipc_2"
-                       library="build/controllers/libmy_ipc_controller.dylib"
+                       library="build/src/plugin/controllers/libmy_ipc_controller.dylib"
                        >
       <actuators>
         <differential_steering implementation="default" />
@@ -47,7 +47,7 @@
     </my_ipc_controller>
     
     <my_ipc_controller id="ipc_3"
-                       library="build/controllers/libmy_ipc_controller.dylib"
+                       library="build/src/plugin/controllers/libmy_ipc_controller.dylib"
                        >
       <actuators>
         <differential_steering implementation="default" />
@@ -57,7 +57,7 @@
     </my_ipc_controller>
 
     <my_ipc_controller id="ipc_4"
-                       library="build/controllers/libmy_ipc_controller.dylib"
+                       library="build/src/plugin/controllers/libmy_ipc_controller.dylib"
                        >
       <actuators>
         <differential_steering implementation="default" />

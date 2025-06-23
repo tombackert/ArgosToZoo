@@ -1,3 +1,5 @@
+[Home](../README.md) | [Concept](concept.md) | [Architecture](architecture.md) | [How to Run](how-to-run.md)
+
 # Architecture: ARGoS-PettingZoo Bridge
 
 This document describes the technical architecture that enables communication between the C++-based ARGoS simulator and an external Python control script.

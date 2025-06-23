@@ -11,4 +11,4 @@ find_package(nlohmann_json REQUIRED)
 
 include_directories(${ARGOS_INCLUDE_DIRS})
 
-add_subdirectory(controllers)
+add_subdirectory(src/plugin)
