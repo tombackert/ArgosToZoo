@@ -1,11 +1,7 @@
 #ifndef MY_IPC_CONTROLLER_H
 #define MY_IPC_CONTROLLER_H
 
-/*
- * Inkludieren der notwendigen ARGoS-Header.
- * - ci_controller.h: Definiert die Basisklasse CCI_Controller.[6, 7]
- * - ci_differential_steering_actuator.h: Definiert die Schnittstelle zur Steuerung der Räder.[6]
- */
+// ARGoS-Header
 #include <argos3/core/control_interface/ci_controller.h>
 #include <argos3/plugins/robots/generic/control_interface/ci_differential_steering_actuator.h>
 
@@ -64,6 +60,9 @@ private:
     // ZeroMQ-Member
     zmq::context_t* m_ptZmqContext;
     zmq::socket_t* m_ptZmqSocket;
+
+    // Port für die Kommunikation
+    std::string m_sPort;
 };
 
 #endif

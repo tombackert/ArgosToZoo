@@ -5,7 +5,8 @@
 CMyIPCController::CMyIPCController() :
    m_pcWheels(NULL),
    m_ptZmqContext(NULL),
-   m_ptZmqSocket(NULL) {}
+   m_ptZmqSocket(NULL),
+   m_sPort("5555") {}
 
 /*
  * Initialisierungsmethode.
@@ -14,15 +15,18 @@ void CMyIPCController::Init(TConfigurationNode& t_node) {
    try {
       m_pcWheels = GetActuator<CCI_DifferentialSteeringActuator>("differential_steering");
 
-      // 1. Initialisiere den ZeroMQ-Kontext
-      m_ptZmqContext = new zmq::context_t(1);
+      // Lese den Port aus dem <params>-Abschnitt der XML-Datei.
+      // Wenn nicht vorhanden, wird der Standardwert "5555" verwendet.
+      GetNodeAttributeOrDefault(t_node, "port", m_sPort, m_sPort);
 
-      // 2. Erstelle einen REP(ly)-Socket
+      // Initialisiere ZeroMQ
+      m_ptZmqContext = new zmq::context_t(1);
       m_ptZmqSocket = new zmq::socket_t(*m_ptZmqContext, ZMQ_REP);
 
-      // 3. Binde den Socket an einen Port. ARGoS agiert als Server.
-      m_ptZmqSocket->bind("tcp://*:5555");
-      LOG << "[INFO] IPC Controller initialisiert und an tcp://*:5555 gebunden" << std::endl;
+      // Binde den Socket an die dynamische Adresse
+      std::string strBindAddr = "tcp://*:" + m_sPort;
+      m_ptZmqSocket->bind(strBindAddr);
+      LOG << "[INFO] IPC Controller initialisiert und an " << strBindAddr << " gebunden" << std::endl;
 
    } catch(CARGoSException& ex) {
       THROW_ARGOSEXCEPTION_NESTED("Error initializing CMyIPCController", ex);
