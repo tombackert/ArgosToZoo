@@ -13,7 +13,7 @@
 #include <zmq.hpp>
 
 // JSON Header
-#include "json.hpp"
+#include "nlohmann/json.hpp"
 
 using namespace argos;
 using json = nlohmann::json;
