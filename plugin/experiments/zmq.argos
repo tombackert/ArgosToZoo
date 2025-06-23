@@ -33,71 +33,23 @@
   <!-- *************** -->
   <controllers>
 
-    <!-- 
-         Here you list the controllers to be used in the experiment.
-         The XML tag is set by the REGISTER_CONTROLLER(class, "tag") macro.
-         You find it in the .cpp file of your controller.
-         For this example, the macro is called in
-         controllers/footbot_diffusion.cpp:100.
-    -->
+      <ipc_controller id="ipc_c"
+                        library="build/plugin/controllers/libmy_ipc_controller.so">
+        
+        <actuators>
+          <differential_steering implementation="default" />
+        </actuators>
+        
+        <sensors>
+        </sensors>
+        
+        <params />
 
-    <!--
-        The attributes are:
-        - id: a unique a identifier for this controller, to be used in the
-          subsequent <arena> section to say which robots use which
-          controller
-        - library: the path to the compiled library containing you
-          controller.
-    -->
-    <footbot_diffusion_controller id="fdc"
-                                  library="build/controllers/footbot_diffusion/libfootbot_diffusion">
-      <!--
-          The <actuators> section contains a list of the actuators used by
-          this controller.
-          If you forget a to mention an actuator here and then request it
-          in the controller, an error occurs.
-          For a list of the possible actuators, type at the command prompt:
-          $ launch_argos -q actuators
-
-          Multiple implementations of an actuator are possible. To
-          identify which one you want to use, pass it in the
-          'implementation' attribute below. When you type the 'argos3 -q'
-          command, the implementation is in the square brackets following
-          the name of the device:
-
-          $ argos3 -q actuators
-          ...
-          footbot_wheels [default]
-          ...
-      -->
-      <actuators>
-        <differential_steering implementation="default" />
-      </actuators>
-      <!--
-          The <sensors> section contains a list of the sensors used by
-          this controller.
-          If you forget a to mention a sensor here and then request it in
-          the controller, an error occurs.
-          For a list of the possible sensors, type at the command prompt:
-          $ argos3 -q sensors
-      -->
-      <sensors>
-        <footbot_proximity implementation="default" show_rays="true" />
-      </sensors>
-      <!--
-          The <params> section is passed as-is to the controller's Init()
-          function.
-          The user, writing the controller, defines how it is organized.
-          To understand what these parameters are for, check the
-          controller's header file in
-          controllers/footbot_diffusion/footbot_diffusion.h.
-      -->
-      <params alpha="7.5" delta="0.1" velocity="5" />
-    </footbot_diffusion_controller>
+      </ipc_controller>
 
   </controllers>
 
-  <loop_functions library="/Users/tom.backert/Desktop/ArgosToZoo/argos_zeromq_plugin/build/libzeromq_bridge.dylib"
+  <loop_functions library="/Users/tom.backert/Desktop/ArgosToZoo/plugin/build/libzeromq_bridge.dylib"
                     label="zeromq_bridge_loop_functions">
         <params zmq_port="5555" /> 
   </loop_functions>
@@ -139,7 +91,7 @@
     <!-- Place a foot-bot in the origin and bind it to the controller -->
     <foot-bot id="fb_0">
       <body position="0,0,0" orientation="0,0,0" />
-      <controller config="fdc"/>
+      <controller config="ipc_c"/>
     </foot-bot>
 
   </arena>
