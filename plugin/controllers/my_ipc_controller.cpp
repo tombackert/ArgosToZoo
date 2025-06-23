@@ -40,38 +40,37 @@ void CMyIPCController::Init(TConfigurationNode& t_node) {
  */
 void CMyIPCController::ControlStep() {
    try {
-      // 1. Warte auf eine Anfrage vom Python-Client (blockierend)
+      // 1. Versuche, eine Nachricht NICHT-BLOCKIEREND zu empfangen.
       zmq::message_t request;
-      m_ptZmqSocket->recv(request, zmq::recv_flags::none);
+      auto received = m_ptZmqSocket->recv(request, zmq::recv_flags::dontwait);
 
-      // 2. Parse die Anfrage als JSON
-      json command = json::parse(request.to_string());
-      
-      // 3. Extrahiere die Geschwindigkeitswerte
-      Real fLeftSpeed = command.value("left_speed", 0.0);
-      Real fRightSpeed = command.value("right_speed", 0.0);
+      // 2. Prüfe, ob eine Nachricht empfangen wurde.
+      // `received` ist ein std::optional. Es hat nur dann einen Wert, wenn recv erfolgreich war.
+      if (received.has_value() && received.value() > 0) {
+         // Eine Nachricht wurde empfangen, verarbeite sie.
+         json command = json::parse(request.to_string());
+         Real fLeftSpeed = command.value("left_speed", 0.0);
+         Real fRightSpeed = command.value("right_speed", 0.0);
+         m_pcWheels->SetLinearVelocity(fLeftSpeed, fRightSpeed);
 
-      // 4. Setze die Geschwindigkeit der Räder
-      m_pcWheels->SetLinearVelocity(fLeftSpeed, fRightSpeed);
-
-      // 5. Erstelle eine Antwort (z.B. mit Status)
-      json response;
-      response["status"] = "ok";
-      // Hier könnten später Sensordaten hinzugefügt werden
-      // response["proximity"] =...;
-
-      // 6. Sende die Antwort zurück an den Python-Client
-      m_ptZmqSocket->send(zmq::buffer(response.dump()), zmq::send_flags::none);
+         json response;
+         response["status"] = "ok";
+         m_ptZmqSocket->send(zmq::buffer(response.dump()), zmq::send_flags::none);
+      }
+      // 3. Wenn keine Nachricht empfangen wurde, tue nichts und gib die Kontrolle sofort an ARGoS zurück.
+      // Das verhindert das Einfrieren der Simulation.
 
    } catch(json::parse_error& ex) {
       LOGERR << " JSON parse error: " << ex.what() << std::endl;
-      // Sende eine Fehlermeldung zurück
       json error_response;
       error_response["status"] = "error";
       error_response["message"] = "Invalid JSON format";
       m_ptZmqSocket->send(zmq::buffer(error_response.dump()), zmq::send_flags::none);
    } catch(zmq::error_t& ex) {
-      LOGERR << " ZeroMQ error: " << ex.what() << std::endl;
+      // Ignoriere "Resource temporarily unavailable"-Fehler, die bei dontwait normal sind.
+      if (ex.num()!= ETIMEDOUT && ex.num()!= EAGAIN) {
+         LOGERR << " ZeroMQ error: " << ex.what() << std::endl;
+      }
    }
 }
 
