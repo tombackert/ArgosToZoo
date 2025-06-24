@@ -19,7 +19,7 @@ jobs:
 
       - name: Install All C++ Dependencies
         run: |
-          brew install pkg-config cmake libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen zeromq clang-format nlohmann-json
+          brew install pkg-config cmake libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen zeromq cppzmq clang-format nlohmann-json 
 
       - name: Install ARGoS from Source
         run: |
