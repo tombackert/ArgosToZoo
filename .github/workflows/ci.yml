@@ -1,4 +1,4 @@
-# Dieses YAML-Dokument definiert einen GitHub Actions Workflow für CI/CD
+# Name des GitHub Actions-Workflows
 name: ArgosToZoo CI
 
 # Löst den Workflow bei jedem Push oder Pull Request auf den 'main'-Branch aus
@@ -22,22 +22,16 @@ jobs:
       # Schritt 2: C++-Abhängigkeiten und ARGoS-Voraussetzungen installieren
       - name: Install C++ Dependencies
         run: |
-          # Installation der von ARGoS benötigten Pakete gemäß README
-          brew install cmake freeimage qt5 lua
-          # Installation der für Ihr Projekt benötigten Pakete
-          brew install zeromq clang-format nlohmann-json
+          brew install cmake freeimage qt5 lua asciidoc doxygen graphviz zeromq clang-format nlohmann-json
 
       # Schritt 3: ARGoS aus dem Quellcode installieren
       - name: Install ARGoS from Source
         run: |
-          # ARGoS Repository klonen
           git clone https://github.com/ilpincy/argos3.git
           cd argos3
-          # Build-Verzeichnis erstellen und kompilieren
           mkdir build && cd build
           cmake ../src
           make
-          # ARGoS systemweit installieren, damit es von anderen Schritten gefunden wird
           sudo make install
 
       # Schritt 4: Python-Umgebung einrichten
@@ -67,7 +61,6 @@ jobs:
         run: |
           mkdir build
           cd build
-          # Dieser cmake-Befehl sollte nun die installierte ARGoS-Version finden
           cmake ..
           make
 
