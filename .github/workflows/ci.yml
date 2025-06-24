@@ -31,7 +31,7 @@ jobs:
           echo "Creating build directory..."
           mkdir build && cd build
           echo "Running CMake to configure the build..."
-          cmake ../src
+          cmake -DCMAKE_CXX_STANDARD=17 ../src
           echo "Building ARGoS binaries..."
           make -j$(sysctl -n hw.ncpu)
           echo "Building ARGoS documentation (required for install)..."
