@@ -24,7 +24,7 @@ jobs:
         run: |
           # Installation aller Abhängigkeiten exakt wie in der README für Mac OSX beschrieben
           # + die zusätzlichen Projekt-Abhängigkeiten
-          brew install pkg-config cmake libpng freeimage qt freeglut lua@5.3 docbook asciidoc graphviz doxygen zeromq clang-format nlohmann-json
+          brew install pkg-config cmake libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen zeromq clang-format nlohmann-json
 
       # Schritt 3: ARGoS aus dem Quellcode gemäß README installieren
       - name: Install ARGoS from Source
