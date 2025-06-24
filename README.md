@@ -123,5 +123,4 @@ Control the robots by typing `w`, `a`, `s`, `d`, or `stop` in the Python termina
 - **PettingZoo Parallel API:** [Documentation](https://pettingzoo.farama.org/api/parallel/) | [Paper](https://arxiv.org/pdf/2009.14471)
 - **Ray RLlib:** [RLlib Docs](https://docs.ray.io/en/latest/rllib/index.html) | [Multi-Agent](https://docs.ray.io/en/latest/rllib/multi-agent-envs.html) | [External Env](https://docs.ray.io/en/latest/rllib/external-envs.html)
 - **ZeroMQ:** [Official Site](https://zeromq.org/)
-
 - **Research:** [Swarm robotics RL overview](https://doi.org/10.1016/j.cogr.2023.07.004)
