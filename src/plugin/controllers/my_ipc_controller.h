@@ -9,7 +9,7 @@
 #include <zmq.hpp>
 
 // JSON header
-#include "nlohmann/json.hpp"
+#include "../common/json.hpp"
 
 using namespace argos;
 using json = nlohmann::json;

@@ -7,8 +7,7 @@ endif()
 
 find_package(ARGoS REQUIRED)
 find_package(cppzmq REQUIRED)
-find_package(nlohmann_json REQUIRED)
 
-include_directories(${ARGOS_INCLUDE_DIRS})
+include_directories(${ARGOS_INCLUDE_DIRS} "${CMAKE_SOURCE_DIR}/src/plugin/common")
 
 add_subdirectory(src/plugin)
