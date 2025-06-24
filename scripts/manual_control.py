@@ -1,5 +1,5 @@
 import zmq
-import json
+
 
 def main():
     """A client that controls multiple ARGoS robots simultaneously."""
