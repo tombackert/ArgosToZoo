@@ -38,14 +38,12 @@ These instructions are for macOS (Apple Silicon/ARM64).
 
 **Core Dependencies (via Homebrew):**
 ```bash
-brew install argos3
-brew install zeromq
-brew install cmake
+brew install pkg-config cmake libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen zeromq cppzmq clang-format
 ```
 
 **Python Packages:**
 ```bash
-pip install pyzmq pettingzoo
+pip install -r requirements.txt
 ```
 
 **C++ JSON Library:**
