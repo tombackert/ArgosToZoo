@@ -54,3 +54,39 @@ The typical control flow for a simulation step is as follows:
 4. The C++ controller receives the message, parses the JSON, and sets the robot’s wheel speeds accordingly.
 5. The C++ controller sends a confirmation JSON message (e.g., `{"status": "ok"}`) back to the Python client.
 6. The Python client receives the confirmation and can send the next command.
+
+## Project Structure
+
+The repository is organized into the following directories:
+
+```
+.
+├── CMakeLists.txt          # Main CMake configuration for the C++ plugin
+├── README.md               # Project overview, setup, and usage instructions
+├── build/                  # Compiled C++ binaries and build artifacts (auto-generated)
+├── docs/                   # Documentation, diagrams, and architectural notes
+│   ├── architecture.md     # This file
+│   ├── concept.md          # High-level project concept
+│   └── how-to-run.md       # Detailed setup and execution guide
+├── experiments/            # ARGoS configuration files (.argos) for different scenarios
+│   ├── footbot_1.argos     # Scenario with one robot
+│   └── footbot_5.argos     # Scenario with five robots
+├── requirements.txt        # Python dependencies
+├── scripts/                # Standalone Python scripts for control and interaction
+│   └── manual_control.py   # Script for manually controlling robots via the terminal
+├── src/                    # Source code for the bridge
+│   ├── plugin/             # C++ ARGoS plugin source
+│   │   ├── CMakeLists.txt
+│   │   ├── common/
+│   │   │   └── json.hpp    # nlohmann/json library for C++ JSON parsing
+│   │   ├── controllers/
+│   │   │   ├── my_ipc_controller.cpp # Controller logic with ZeroMQ server
+│   │   │   └── my_ipc_controller.h
+│   │   └── loop_functions/ # 
+│   └── zoo/                # Python package for the PettingZoo environment
+│       ├── argos_env.py    # Main PettingZoo environment wrapper
+│       ├── test_env.py     # Script to test the environment
+│       └── zmq_client.py   # ZeroMQ client for connecting to ARGoS
+└── tests/                  # Tests for the Python components
+    └── test_example.py
+```
