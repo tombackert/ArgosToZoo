@@ -2,7 +2,7 @@
 
 [**Concept**](#concept) | [**How to Run**](#how-to-run) | [**Milestones**](#project-management) | [**Resources**](#resources)
 
-**ArgosToZoo** bridges the high-performance ARGoS simulator with popular Multi-Agent Reinforcement Learning (MARL) libraries. It enables the seamless integration of complex swarm robotics experiments into modern Python-based RL workflows.
+**ArgosToZoo** bridges the high-performance [ARGoS](https://www.argos-sim.info) simulator with popular Multi-Agent Reinforcement Learning (MARL) libraries. It enables the seamless integration of complex swarm robotics experiments into modern Python-based RL workflows.
 
 ## Overview
 
@@ -117,7 +117,7 @@ Control the robots by typing `w`, `a`, `s`, `d`, or `stop` in the Python termina
 
 ## Resources
 
-- **ARGoS:** [Modular, parallel, multi-engine simulator](https://doi.org/10.1007/s11721-012-0072-5)
+- **ARGoS:** [Modular, parallel, multi-engine simulator](https://doi.org/10.1007/s11721-012-0072-5) | [Docs](https://www.argos-sim.info/dev_manual.php)
 - **PettingZoo Parallel API:** [Documentation](https://pettingzoo.farama.org/api/parallel/) | [Paper](https://arxiv.org/pdf/2009.14471)
 - **Ray RLlib:** [RLlib Docs](https://docs.ray.io/en/latest/rllib/index.html) | [Multi-Agent](https://docs.ray.io/en/latest/rllib/multi-agent-envs.html) | [External Env](https://docs.ray.io/en/latest/rllib/external-envs.html)
 - **ZeroMQ:** [Official Site](https://zeromq.org/)
