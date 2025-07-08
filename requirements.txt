@@ -1,3 +1,4 @@
 pyzmq
 pytest
 flake8
+pettingzoo
