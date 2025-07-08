@@ -4,9 +4,8 @@
 // ARGoS headers
 #include <argos3/core/control_interface/ci_controller.h>
 #include <argos3/plugins/robots/generic/control_interface/ci_differential_steering_actuator.h>
+#include <argos3/plugins/robots/foot-bot/control_interface/ci_footbot_proximity_sensor.h>
 
-// ZeroMQ header (C++ wrapper)
-#include <zmq.hpp>
 
 // JSON header
 #include "../common/json.hpp"
@@ -52,16 +51,27 @@ public:
      */
     virtual void Destroy();
 
+    /*
+     * Sets the action command for the robot.
+     * This method is used to set the current action based on a command string.
+     */
+    void SetAction(const std::string& action_command);
+
+    /*
+     * Gets the current observation of the robot.
+     * This method returns a JSON object containing the current state of the robot.
+     */
+    json GetObservation();
+
 private:
     /* Pointer to the wheel actuator */
     CCI_DifferentialSteeringActuator* m_pcWheels;
 
-    // ZeroMQ members
-    zmq::context_t* m_ptZmqContext;
-    zmq::socket_t* m_ptZmqSocket;
+    /* Pointer to the proximity sensor */
+    CCI_FootBotProximitySensor* m_pcProximity;
 
-    // Communication port
-    std::string m_sPort;
+    /* Holds the current action*/
+    std::string m_sCurrentAction;
 };
 
 #endif

@@ -4,9 +4,8 @@
 
 CMyIPCController::CMyIPCController() :
    m_pcWheels(NULL),
-   m_ptZmqContext(NULL),
-   m_ptZmqSocket(NULL),
-   m_sPort("5555") {}
+   m_pcProximity(NULL),
+   m_sCurrentAction("Stop") {}
 
 /*
  * Initialization method.
@@ -14,87 +13,68 @@ CMyIPCController::CMyIPCController() :
 void CMyIPCController::Init(TConfigurationNode& t_node) {
    try {
       m_pcWheels = GetActuator<CCI_DifferentialSteeringActuator>("differential_steering");
-
-      // Read the port from the <params> section of the XML file.
-      // If not present, the default value "5555" is used.
-      GetNodeAttributeOrDefault(t_node, "port", m_sPort, m_sPort);
-
-      // Initialize ZeroMQ
-      m_ptZmqContext = new zmq::context_t(1);
-      m_ptZmqSocket = new zmq::socket_t(*m_ptZmqContext, ZMQ_REP);
-
-      // Bind the socket to the dynamic address
-      std::string strBindAddr = "tcp://*:" + m_sPort;
-      m_ptZmqSocket->bind(strBindAddr);
-      LOG << "[INFO] IPC Controller initialized and bound to " << strBindAddr << std::endl;
-
+      m_pcProximity = GetSensor<CCI_FootBotProximitySensor>("footbot_proximity");
    } catch(CARGoSException& ex) {
       THROW_ARGOSEXCEPTION_NESTED("Error initializing CMyIPCController", ex);
-   } catch(zmq::error_t& ex) {
-      THROW_ARGOSEXCEPTION("ZeroMQ error: " << ex.what());
    }
 }
 
 /*
  * The main logic loop.
+ * This method is called once per simulation step. It checks the current action and sets the wheel velocities accordingly.
+ * Supported actions are "left_speed", "right_speed", and "stop".
  */
 void CMyIPCController::ControlStep() {
-   try {
-      // Try to receive a message in a non-blocking way.
-      zmq::message_t request;
-      auto received = m_ptZmqSocket->recv(request, zmq::recv_flags::dontwait);
-
-      // Check if a message was received.
-      // `received` is an std::optional and has a value only if recv was successful.
-      if (received.has_value() && received.value() > 0) {
-         // A message was received, process it.
-         json command = json::parse(request.to_string());
-         Real fLeftSpeed = command.value("left_speed", 0.0);
-         Real fRightSpeed = command.value("right_speed", 0.0);
-         m_pcWheels->SetLinearVelocity(fLeftSpeed, fRightSpeed);
-
-         json response;
-         response["status"] = "ok";
-         m_ptZmqSocket->send(zmq::buffer(response.dump()), zmq::send_flags::none);
-      }
-      // If no message was received, do nothing and return control to ARGoS.
-      // This prevents the simulation from freezing.
-
-   } catch(json::parse_error& ex) {
-      LOGERR << " JSON parse error: " << ex.what() << std::endl;
-      json error_response;
-      error_response["status"] = "error";
-      error_response["message"] = "Invalid JSON format";
-      m_ptZmqSocket->send(zmq::buffer(error_response.dump()), zmq::send_flags::none);
-   } catch(zmq::error_t& ex) {
-      // Ignore "Resource temporarily unavailable" errors, which are expected with non-blocking sockets.
-      if (ex.num()!= ETIMEDOUT && ex.num()!= EAGAIN) {
-         LOGERR << " ZeroMQ error: " << ex.what() << std::endl;
-      }
+   if (m_sCurrentAction == "left_speed") {
+      m_pcWheels->SetLinearVelocity(-5.0f, 5.0f); // left
+   } else if (m_sCurrentAction == "right_speed") {
+      m_pcWheels->SetLinearVelocity(5.0f, -5.0f); // right
+   } else if (m_sCurrentAction == "stop") {
+      m_pcWheels->SetLinearVelocity(0.0f, 0.0f); // stop
+   } else { 
+      m_pcWheels->SetLinearVelocity(0.0f, 0.0f); // Unknown action, stop the robot
+      LOG << "[WARNING] Unknown action: " << m_sCurrentAction << ". Setting wheels to stop." << std::endl;
    }
 }
 
 /*
- * Reset method.
+ * Reset method. Resets the current action to "stop".
  */
 void CMyIPCController::Reset() {
-   // Nothing to reset in this simple controller.
+   m_sCurrentAction = "stop";
+   LOG << "[INFO] IPC Controller reseted." << std::endl;
 }
 
 /*
  * Destroy method.
  */
 void CMyIPCController::Destroy() {
-   // Clean up ZeroMQ resources
-   if (m_ptZmqSocket) {
-      m_ptZmqSocket->close();
-      delete m_ptZmqSocket;
-  }
-  if (m_ptZmqContext) {
-      m_ptZmqContext->close();
-      delete m_ptZmqContext;
-  }
   LOG << "[INFO] IPC Controller destroyed." << std::endl;
+}
+
+/*
+ * Sets the action command for the robot.
+ * This method is used to set the current action based on a command string.
+ */
+void CMyIPCController::SetAction(const std::string& action_command) {
+   m_sCurrentAction = action_command;
+   LOG << "[INFO] IPC Controller action set to: " << m_sCurrentAction << std::endl;
+}
+
+/*
+ * Gets the current observation of the robot.
+ * This method returns a JSON object containing the current state of the robot.
+ */
+json CMyIPCController::GetObservation() {
+   const auto& tReadings = m_pcProximity->GetReadings();
+   json observation;
+   std::vector<double> readings_vector;
+   for (size_t i = 0; i < tReadings.size(); ++i) {
+       readings_vector.push_back(tReadings[i].Value);
+   }
+   observation["proximity"] = readings_vector;
+   LOG << "[INFO] IPC Controller observation: " << observation.dump() << std::endl;
+   return observation;
 }
 
 /*
