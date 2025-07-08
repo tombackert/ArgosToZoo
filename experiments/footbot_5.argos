@@ -22,7 +22,9 @@
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
-      <sensors />
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="true" />
+      </sensors>
       <params port="5555"/>
     </my_ipc_controller>
     
@@ -32,7 +34,9 @@
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
-      <sensors />
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="true" />
+      </sensors>
       <params port="5556"/>
     </my_ipc_controller>
 
@@ -42,7 +46,9 @@
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
-      <sensors />
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="true" />
+      </sensors>
       <params port="5557"/>
     </my_ipc_controller>
     
@@ -52,7 +58,9 @@
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
-      <sensors />
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="true" />
+      </sensors>
       <params port="5558"/>
     </my_ipc_controller>
 
@@ -62,7 +70,9 @@
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
-      <sensors />
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="true" />
+      </sensors>
       <params port="5559"/>
     </my_ipc_controller>
 

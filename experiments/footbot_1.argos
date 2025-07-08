@@ -16,17 +16,25 @@
   <!-- *************** -->
  <controllers>
 
-    <my_ipc_controller id="ipc_0"
+    <my_ipc_controller id="ipc"
                        library="build/src/plugin/controllers/libmy_ipc_controller.dylib"
                        >
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
-      <sensors />
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="true" />
+      </sensors>
       <params port="5555"/>
     </my_ipc_controller>
 
   </controllers>
+
+  <!-- ***************** -->
+  <!-- * Loop functions * -->
+  <!-- ***************** -->
+  <loop_functions library="build/src/plugin/loop_functions/libzoo_loop_functions.dylib"
+                  label="zoo_loop_functions" />
 
   <!-- *********************** -->
   <!-- * Arena configuration * -->
@@ -35,7 +43,7 @@
 
     <foot-bot id="fb_0" rab_range="0.8">
       <body position="-2.0,0,0" orientation="0,0,0" />
-      <controller config="ipc_0" />
+      <controller config="ipc" />
     </foot-bot>
 
   </arena>
