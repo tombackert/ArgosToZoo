@@ -1,3 +1,15 @@
+/*
+* Problems to fix:
+* - Connection wird nicht richtig gehalten
+* - Reset wird nicht korrekt gemacht
+* - Experiment kann derzeit nicht pausiert, gestoppt oder geresetet werden
+*/
+
+
+
+
+
+
 #include "zoo_loop_functions.h"
 #include <argos3/core/simulator/simulator.h>
 #include <argos3/core/utility/logging/argos_log.h>
