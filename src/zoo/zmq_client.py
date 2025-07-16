@@ -16,7 +16,8 @@ class ZMQClient:
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REQ)
         self.socket.connect(f"tcp://localhost:{port}")
-        
+        print(self.socket)
+
         self.poller = zmq.Poller()
         self.poller.register(self.socket, zmq.POLLIN)
         
@@ -28,7 +29,7 @@ class ZMQClient:
         Sends a command and payload to the server and waits for a reply.
 
         Args:
-            command (str): The command to send (e.g., 'RESET', 'STEP').
+            command (str): The command to send (e.g., 'reset', 'step').
             payload (dict, optional): The data associated with the command.
 
         Returns:
@@ -46,6 +47,8 @@ class ZMQClient:
         
         # Use the poller to wait for a reply with a timeout [2, 3]
         socks = dict(self.poller.poll(self.timeout))
+        print(f"Sent command: [{command}], waiting for reply...")
+        print(f"Poller status: {socks}")
         
         if self.socket in socks and socks[self.socket] == zmq.POLLIN:
             reply = self.socket.recv_json()

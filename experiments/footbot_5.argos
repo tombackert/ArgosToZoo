@@ -7,7 +7,7 @@
   <framework>
     <system threads="0" />
     <experiment length="0"
-                ticks_per_second="10"
+                ticks_per_second="1"
                 random_seed="124" />
   </framework>
 
@@ -75,12 +75,18 @@
       </sensors>
       <params port="5559"/>
     </my_ipc_controller>
+    
 
     
 
     
 
   </controllers>
+
+  <loop_functions library="build/src/plugin/loop_functions/libzoo_loop_functions.dylib"
+                    label="zoo_loop_functions">
+        <params zmq_port="5555" /> 
+  </loop_functions>
 
   <!-- *********************** -->
   <!-- * Arena configuration * -->
@@ -132,7 +138,7 @@
   <!-- * Visualization * -->
   <!-- ****************** -->
   <visualization>
-    <qt-opengl>
+    <qt-opengl autoplay="true">
       <camera>
         <placements>
           <placement index="0" position="0,0,13" look_at="0,0,0" up="1,0,0" lens_focal_length="65" />

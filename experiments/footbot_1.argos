@@ -7,16 +7,20 @@
   <framework>
     <system threads="0" />
     <experiment length="0"
-                ticks_per_second="10"
+                ticks_per_second="1"
                 random_seed="124" />
   </framework>
+
+  <loop_functions library="build/src/plugin/loop_functions/libzoo_loop_functions.dylib"
+                    label="zoo_loop_functions">
+  </loop_functions>
 
   <!-- *************** -->
   <!-- * Controllers * -->
   <!-- *************** -->
  <controllers>
 
-    <my_ipc_controller id="ipc"
+    <my_ipc_controller id="ipc_0"
                        library="build/src/plugin/controllers/libmy_ipc_controller.dylib"
                        >
       <actuators>
@@ -30,12 +34,6 @@
 
   </controllers>
 
-  <!-- ***************** -->
-  <!-- * Loop functions * -->
-  <!-- ***************** -->
-  <loop_functions library="build/src/plugin/loop_functions/libzoo_loop_functions.dylib"
-                  label="zoo_loop_functions" />
-
   <!-- *********************** -->
   <!-- * Arena configuration * -->
   <!-- *********************** -->
@@ -43,7 +41,7 @@
 
     <foot-bot id="fb_0" rab_range="0.8">
       <body position="-2.0,0,0" orientation="0,0,0" />
-      <controller config="ipc" />
+      <controller config="ipc_0" />
     </foot-bot>
 
   </arena>
@@ -64,7 +62,7 @@
   <!-- * Visualization * -->
   <!-- ****************** -->
   <visualization>
-    <qt-opengl>
+    <qt-opengl autoplay="true">
       <camera>
         <placements>
           <placement index="0" position="0,0,13" look_at="0,0,0" up="1,0,0" lens_focal_length="65" />

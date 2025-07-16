@@ -5,15 +5,17 @@
 CMyIPCController::CMyIPCController() :
    m_pcWheels(NULL),
    m_pcProximity(NULL),
-   m_sCurrentAction("Stop") {}
+   m_sCurrentAction("stop") {}
 
 /*
  * Initialization method.
  */
 void CMyIPCController::Init(TConfigurationNode& t_node) {
+   LOG << "[DEBUG] CMyIPCController::Init() called" << std::endl;
    try {
       m_pcWheels = GetActuator<CCI_DifferentialSteeringActuator>("differential_steering");
       m_pcProximity = GetSensor<CCI_FootBotProximitySensor>("footbot_proximity");
+      
    } catch(CARGoSException& ex) {
       THROW_ARGOSEXCEPTION_NESTED("Error initializing CMyIPCController", ex);
    }
@@ -25,6 +27,7 @@ void CMyIPCController::Init(TConfigurationNode& t_node) {
  * Supported actions are "left_speed", "right_speed", and "stop".
  */
 void CMyIPCController::ControlStep() {
+   LOG << "[INFO] MyIPCController::ControlStep() called with action: " << m_sCurrentAction << std::endl;
    if (m_sCurrentAction == "left_speed") {
       m_pcWheels->SetLinearVelocity(-5.0f, 5.0f); // left
    } else if (m_sCurrentAction == "right_speed") {
@@ -32,8 +35,8 @@ void CMyIPCController::ControlStep() {
    } else if (m_sCurrentAction == "stop") {
       m_pcWheels->SetLinearVelocity(0.0f, 0.0f); // stop
    } else { 
-      m_pcWheels->SetLinearVelocity(0.0f, 0.0f); // Unknown action, stop the robot
-      LOG << "[WARNING] Unknown action: " << m_sCurrentAction << ". Setting wheels to stop." << std::endl;
+      m_pcWheels->SetLinearVelocity(0.0f, 0.0f); // Unknown action -> stop robot
+      LOGERR << "[WARNING] Unknown action: " << m_sCurrentAction << ". Setting wheels to stop.." << std::endl;
    }
 }
 
@@ -41,15 +44,16 @@ void CMyIPCController::ControlStep() {
  * Reset method. Resets the current action to "stop".
  */
 void CMyIPCController::Reset() {
+   LOG << "[DEBUG] MyIPCController::Reset() called." << std::endl;
    m_sCurrentAction = "stop";
-   LOG << "[INFO] IPC Controller reseted." << std::endl;
+   LOG << "[INFO] MyIPCController reseted." << std::endl;
 }
 
 /*
  * Destroy method.
  */
 void CMyIPCController::Destroy() {
-  LOG << "[INFO] IPC Controller destroyed." << std::endl;
+  LOG << "[INFO] MyIPCController destroyed." << std::endl;
 }
 
 /*
@@ -57,8 +61,9 @@ void CMyIPCController::Destroy() {
  * This method is used to set the current action based on a command string.
  */
 void CMyIPCController::SetAction(const std::string& action_command) {
+   LOG << "[DEBUG] MyIPCController::SetAction() called with command: " << action_command << std::endl;
    m_sCurrentAction = action_command;
-   LOG << "[INFO] IPC Controller action set to: " << m_sCurrentAction << std::endl;
+   LOG << "[INFO] MyIPCController action set to: " << m_sCurrentAction << std::endl;
 }
 
 /*
@@ -66,6 +71,7 @@ void CMyIPCController::SetAction(const std::string& action_command) {
  * This method returns a JSON object containing the current state of the robot.
  */
 json CMyIPCController::GetObservation() {
+   LOG << "[DEBUG] MyIPCController::GetObservation() called." << std::endl;
    const auto& tReadings = m_pcProximity->GetReadings();
    json observation;
    std::vector<double> readings_vector;
@@ -73,7 +79,7 @@ json CMyIPCController::GetObservation() {
        readings_vector.push_back(tReadings[i].Value);
    }
    observation["proximity"] = readings_vector;
-   LOG << "[INFO] IPC Controller observation: " << observation.dump() << std::endl;
+   LOG << "[INFO] MyIPCController observation: " << observation.dump() << std::endl;
    return observation;
 }
 

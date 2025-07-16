@@ -24,21 +24,20 @@ class ArgosEnv(ParallelEnv):
         threading.Thread(target=self._log_stream, args=(self.sim_process.stderr, "ARGoS-err"), daemon=True).start()
         time.sleep(3) # Dem Simulator Zeit zum Starten geben
 
-        # Nur noch EIN Client!
         self.client = ZMQClient(port="5555")
 
     def _log_stream(self, stream, prefix):
         for line in iter(stream.readline, ''):
             print(f"[{prefix}] {line.strip()}", flush=True)
 
-    @functools.lru_cache(maxsize=None)
+
     def observation_space(self, agent):
         # 24 Proximity-Sensor-Werte
         return Dict({
             "proximity": Box(low=0, high=1, shape=(24,), dtype=np.float32),
         })
 
-    @functools.lru_cache(maxsize=None)
+
     def action_space(self, agent):
         # Wir definieren hier keine komplexe Action Space, da wir nur Strings senden
         # Für MARL-Algorithmen würde man hier z.B. Discrete(3) für stop/left/right verwenden
@@ -49,7 +48,7 @@ class ArgosEnv(ParallelEnv):
         self.timestep = 0
         
         # Der erste Request nach dem Start ist quasi der Reset
-        reply = self.client.send_command("RESET", payload={"seed": seed})
+        reply = self.client.send_command("reset")
         
         observations = self._decode_observations(reply["observations"])
         infos = {agent: {} for agent in self.agents}
@@ -60,7 +59,7 @@ class ArgosEnv(ParallelEnv):
         # Aktionen an die Loop Function senden
         # 'actions' ist hier ein Dictionary wie z.B. {"robot_0": "left", "robot_1": "stop"}
         serializable_actions = {"actions": actions}
-        reply = self.client.send_command("STEP", payload=serializable_actions)
+        reply = self.client.send_command("step", payload=serializable_actions)
 
         observations = self._decode_observations(reply["observations"])
         
@@ -84,9 +83,9 @@ class ArgosEnv(ParallelEnv):
     def close(self):
         print("Closing ArgosEnv...")
         try:
-            self.client.send_command("CLOSE")
+            self.client.send_command("close")
         except TimeoutError:
-            print("Did not receive CLOSE confirmation from simulator.")
+            print("Did not receive close confirmation from simulator.")
         
         self.client.close()
         self.sim_process.terminate()
