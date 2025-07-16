@@ -11,7 +11,7 @@ CMyIPCController::CMyIPCController() :
  * Initialization method.
  */
 void CMyIPCController::Init(TConfigurationNode& t_node) {
-   LOG << "[DEBUG] CMyIPCController::Init() called" << std::endl;
+   LOG << "[DEBUG] CMyIPCController::Init()" << std::endl;
    try {
       m_pcWheels = GetActuator<CCI_DifferentialSteeringActuator>("differential_steering");
       m_pcProximity = GetSensor<CCI_FootBotProximitySensor>("footbot_proximity");
@@ -27,11 +27,16 @@ void CMyIPCController::Init(TConfigurationNode& t_node) {
  * Supported actions are "left_speed", "right_speed", and "stop".
  */
 void CMyIPCController::ControlStep() {
-   LOG << "[INFO] MyIPCController::ControlStep() called with action: " << m_sCurrentAction << std::endl;
+   LOG << "[DEBUG] MyIPCController::ControlStep()" << std::endl;
+   LOG << "[ACTION] MyIPCController::ControlStep() Action: " << m_sCurrentAction << std::endl;
    if (m_sCurrentAction == "left_speed") {
       m_pcWheels->SetLinearVelocity(-5.0f, 5.0f); // left
    } else if (m_sCurrentAction == "right_speed") {
       m_pcWheels->SetLinearVelocity(5.0f, -5.0f); // right
+   } else if (m_sCurrentAction == "forward_speed") {
+      m_pcWheels->SetLinearVelocity(5.0f, 5.0f); // forward
+   } else if (m_sCurrentAction == "backward_speed") {
+      m_pcWheels->SetLinearVelocity(-5.0f, -5.0f); // backward
    } else if (m_sCurrentAction == "stop") {
       m_pcWheels->SetLinearVelocity(0.0f, 0.0f); // stop
    } else { 
@@ -44,7 +49,7 @@ void CMyIPCController::ControlStep() {
  * Reset method. Resets the current action to "stop".
  */
 void CMyIPCController::Reset() {
-   LOG << "[DEBUG] MyIPCController::Reset() called." << std::endl;
+   LOG << "[DEBUG] MyIPCController::Reset()" << std::endl;
    m_sCurrentAction = "stop";
    LOG << "[INFO] MyIPCController reseted." << std::endl;
 }
@@ -61,9 +66,9 @@ void CMyIPCController::Destroy() {
  * This method is used to set the current action based on a command string.
  */
 void CMyIPCController::SetAction(const std::string& action_command) {
-   LOG << "[DEBUG] MyIPCController::SetAction() called with command: " << action_command << std::endl;
+   LOG << "[DEBUG] MyIPCController::SetAction()" << std::endl;
    m_sCurrentAction = action_command;
-   LOG << "[INFO] MyIPCController action set to: " << m_sCurrentAction << std::endl;
+   LOG << "[DEBUG] Action set to: " << m_sCurrentAction << std::endl;
 }
 
 /*
@@ -71,7 +76,7 @@ void CMyIPCController::SetAction(const std::string& action_command) {
  * This method returns a JSON object containing the current state of the robot.
  */
 json CMyIPCController::GetObservation() {
-   LOG << "[DEBUG] MyIPCController::GetObservation() called." << std::endl;
+   LOG << "[DEBUG] MyIPCController::GetObservation()" << std::endl;
    const auto& tReadings = m_pcProximity->GetReadings();
    json observation;
    std::vector<double> readings_vector;
@@ -79,7 +84,7 @@ json CMyIPCController::GetObservation() {
        readings_vector.push_back(tReadings[i].Value);
    }
    observation["proximity"] = readings_vector;
-   LOG << "[INFO] MyIPCController observation: " << observation.dump() << std::endl;
+   //LOG << "[INFO] MyIPCController observation: " << observation.dump() << std::endl;
    return observation;
 }
 

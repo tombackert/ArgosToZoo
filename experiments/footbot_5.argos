@@ -94,27 +94,27 @@
   <arena size="5, 5, 1" center="0,0,0.5">
 
     <foot-bot id="fb_0" rab_range="0.8">
-      <body position="-2.0,0,0" orientation="0,0,0" />
+      <body position="0,-2.0,0" orientation="0,0,0" />
       <controller config="ipc_0" />
     </foot-bot>
 
     <foot-bot id="fb_1" rab_range="0.8">
-      <body position="-1.0,0,0" orientation="0,0,0" />
+      <body position="0,-1.0,0" orientation="0,0,0" />
       <controller config="ipc_1" />
     </foot-bot>
 
     <foot-bot id="fb_2" rab_range="0.8">
-      <body position="0.0,0,0" orientation="0,0,0" />
+      <body position="0,0,0" orientation="0,0,0" />
       <controller config="ipc_2" />
     </foot-bot>
 
     <foot-bot id="fb_3" rab_range="0.8">
-      <body position="1.0,0,0" orientation="0,0,0" />
+      <body position="0,1.0,0" orientation="0,0,0" />
       <controller config="ipc_3" />
     </foot-bot>
 
     <foot-bot id="fb_4" rab_range="0.8">
-      <body position="2.0,0,0" orientation="0,0,0" />
+      <body position="0,2.0,0" orientation="0,0,0" />
       <controller config="ipc_4" />
     </foot-bot>
 
