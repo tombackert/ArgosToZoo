@@ -5,24 +5,22 @@ if __name__ == "__main__":
     print("Test started...")
     EXPERIMENT = "experiments/footbot_5.argos"
 
-    # Automatische Agenten-Discovery (expected_num_agents optional setzen)
-    env = ArgosEnv(argos_file=EXPERIMENT, expected_num_agents=None)
-
+    env = ArgosEnv(argos_file=EXPERIMENT)
     time.sleep(1.0)
 
-    print("\nStarting interaction loop (auto-discovered agents)...")
+    print("\nStarting interaction loop...")
     observations, infos = env.reset()
     print(f"Discovered agents: {env.agents}")
 
-    ACTION_SET_A = ["forward_speed", "backward_speed", "right_speed", "left_speed"]
-    ACTION_SET_B = ["backward_speed", "forward_speed", "left_speed", "right_speed"]
+    # Discrete Actions: 0=stop,1=forward,2=backward,3=turn_left,4=turn_right
+    ACTION_PATTERN_A = [1, 3, 4, 0, 2]
+    ACTION_PATTERN_B = [2, 4, 3, 0, 1]
 
     for step in range(10):
         actions = {}
-        chosen = ACTION_SET_A if (step // 5) % 2 == 0 else ACTION_SET_B
+        pattern = ACTION_PATTERN_A if (step // 5) % 2 == 0 else ACTION_PATTERN_B
         for idx, agent in enumerate(env.agents):
-            # Zyklisch Aktionen zuweisen
-            actions[agent] = chosen[idx % len(chosen)]
+            actions[agent] = pattern[idx % len(pattern)]
 
         print(f"\n--- Step {step} | Actions: {actions} ---")
         observations, _, _, _, _ = env.step(actions)
