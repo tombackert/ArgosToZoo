@@ -53,7 +53,7 @@ class ArgosEnv(ParallelEnv):
         ]
         # Mapping to previously used command strings (compatibility)
         self._action_name_to_command = {
-            "stop": "stop_speed",
+            "stop": "stop",
             "forward": "forward_speed",
             "backward": "backward_speed",
             "turn_left": "left_speed",
@@ -127,12 +127,38 @@ class ArgosEnv(ParallelEnv):
         return observations, rewards, terminations, truncations, infos
 
     def _decode_observations(self, obs_dict):
-        return {
-            agent: {
-                "proximity": np.array(obs["proximity"], dtype=np.float32)
-            }
-            for agent, obs in obs_dict.items()
-        }
+        decoded = {}
+        for agent, obs in obs_dict.items():
+            prox_raw = np.array(obs.get("proximity", []), dtype=np.float32)
+            # FUP-03: Validate length (FootBot proximity sensor typically 24 readings)
+            if prox_raw.shape != (24,):
+                # If length differs, attempt padding/truncation and flag via print (later: logging)
+                print(f"[WARN] Proximity vector length {prox_raw.shape} != 24. Auto-adjusting.")
+                if prox_raw.size < 24:
+                    prox_raw = np.pad(prox_raw, (0, 24 - prox_raw.size), mode='constant', constant_values=0.0)
+                else:
+                    prox_raw = prox_raw[:24]
+            # Normalize to [0,1] if values exceed range (heuristic safeguard)
+            if prox_raw.max(initial=0) > 1.0 or prox_raw.min(initial=0) < 0.0:
+                max_val = np.max(np.abs(prox_raw))
+                if max_val > 0:
+                    prox_raw = prox_raw / max_val
+            decoded[agent] = {"proximity": prox_raw}
+        return decoded
+
+    def validate_observation_spaces(self):
+        """Runtime validation to ensure actual observations fit declared spaces.
+        Raises AssertionError if mismatch.
+        """
+        dummy, _ = self.reset()
+        for agent, obs in dummy.items():
+            space = self.observation_space(agent)
+            assert "proximity" in obs, "Missing 'proximity' key in observation"
+            prox = obs["proximity"]
+            assert prox.shape == (24,), f"Proximity shape mismatch: {prox.shape}" 
+            assert (prox >= 0).all() and (prox <= 1).all(), "Proximity values not in [0,1]"
+            assert space.contains(obs), "Observation not contained in declared space"
+        return True
 
     def close(self):
         print("Closing ArgosEnv...")
