@@ -2,50 +2,38 @@ from argos_env import ArgosEnv
 import time
 
 if __name__ == "__main__":
-
     print("Test started...")
     EXPERIMENT = "experiments/footbot_5.argos"
-    NUM_AGENTS = 1 
 
-    env = ArgosEnv(argos_file=EXPERIMENT, num_agents=NUM_AGENTS)
+    # Automatische Agenten-Discovery (expected_num_agents optional setzen)
+    env = ArgosEnv(argos_file=EXPERIMENT, expected_num_agents=None)
 
-    time.sleep(2)
-    
-    print("\nStarting manual interaction loop...")
+    time.sleep(1.0)
+
+    print("\nStarting interaction loop (auto-discovered agents)...")
     observations, infos = env.reset()
-    print(f"Initial observations: {observations}")
+    print(f"Discovered agents: {env.agents}")
+
+    ACTION_SET_A = ["forward_speed", "backward_speed", "right_speed", "left_speed"]
+    ACTION_SET_B = ["backward_speed", "forward_speed", "left_speed", "right_speed"]
 
     for step in range(10):
-        
         actions = {}
-        if (step // 5) % 2 == 0:
-            actions["robot_0"] = "forward_speed"
-            
-            actions["robot_1"] = "backward_speed"
+        chosen = ACTION_SET_A if (step // 5) % 2 == 0 else ACTION_SET_B
+        for idx, agent in enumerate(env.agents):
+            # Zyklisch Aktionen zuweisen
+            actions[agent] = chosen[idx % len(chosen)]
 
-            actions["robot_2"] = "right_speed"
-
-            actions["robot_3"] = "left_speed"
-        else:
-            actions["robot_0"] = "backward_speed"
-            
-            actions["robot_1"] = "forward_speed"
-
-            actions["robot_2"] = "left_speed"
-
-            actions["robot_3"] = "right_speed"
-
-        print(f"\n--- Step {step}, Sending actions: {actions} ---")
+        print(f"\n--- Step {step} | Actions: {actions} ---")
         observations, _, _, _, _ = env.step(actions)
-        print(f"Received observations for robot_0: {observations['robot_0']['proximity'].round(2)}")
+        first_agent = env.agents[0]
+        prox = observations[first_agent]['proximity']
+        print(f"Obs[{first_agent}].proximity (len={len(prox)}): {prox[:6].round(2)} ...")
+        time.sleep(0.05)
 
-        time.sleep(0.1)
-    
-    print("\nManual interaction loop finished.")
-    print("Resetting environment...")
+    print("\nLoop finished. Resetting environment...")
     observations, infos = env.reset()
-    
+    print("Reset successful.")
 
-
-    #env.close()
-    print("Test finished...")
+    # Optional: env.close()
+    print("Test finished.")

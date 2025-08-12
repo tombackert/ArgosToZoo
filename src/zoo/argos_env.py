@@ -5,15 +5,31 @@ import time
 import numpy as np
 from pettingzoo import ParallelEnv
 from gymnasium.spaces import Box, Dict
-from zmq_client import ZMQClient 
+from zmq_client import ZMQClient
+from typing import Optional
 
 class ArgosEnv(ParallelEnv):
     metadata = {"render_modes": ["human"], "name": "argos_v0"}
 
-    def __init__(self, argos_file, num_agents):
+    def __init__(self, argos_file: str, expected_num_agents: Optional[int] = None, startup_delay: float = 3.0):
+        """ARGoS ParallelEnv Wrapper.
+
+        Parameters
+        ----------
+        argos_file : str
+            Pfad zur .argos Konfigurationsdatei.
+        expected_num_agents : Optional[int]
+            Erwartete Anzahl Agents (Validierung). Wenn None, keine Prüfung.
+        startup_delay : float
+            Zeit in Sekunden, die dem Simulator zum Hochfahren gegeben wird.
+        """
         self.argos_file_path = argos_file
-        self.possible_agents = [f"robot_{i}" for i in range(num_agents)]
-        self.agent_name_mapping = {name: i for i, name in enumerate(self.possible_agents)}
+        self._expected_num_agents = expected_num_agents
+
+        # Wird nach erstem reset() gesetzt
+        self.possible_agents = []
+        self.agent_name_mapping = {}
+        self._agents_initialized = False
 
         # Simulator starten
         self.sim_process = subprocess.Popen(
@@ -22,7 +38,7 @@ class ArgosEnv(ParallelEnv):
         )
         threading.Thread(target=self._log_stream, args=(self.sim_process.stdout, "ARGoS-out"), daemon=True).start()
         threading.Thread(target=self._log_stream, args=(self.sim_process.stderr, "ARGoS-err"), daemon=True).start()
-        time.sleep(3) # Dem Simulator Zeit zum Starten geben
+        time.sleep(startup_delay)  # Dem Simulator Zeit zum Starten geben
 
         self.client = ZMQClient(port="5555")
 
@@ -44,15 +60,28 @@ class ArgosEnv(ParallelEnv):
         return Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32) # Platzhalter
 
     def reset(self, seed=None, options=None):
-        self.agents = self.possible_agents[:]
+        # Erster Reset: Agenten dynamisch aus Simulation ableiten
         self.timestep = 0
-        
-        # Der erste Request nach dem Start ist quasi der Reset
+
         reply = self.client.send_command("reset")
-        
-        observations = self._decode_observations(reply["observations"])
+        obs_block = reply.get("observations", {})
+
+        if not self._agents_initialized:
+            discovered = sorted(list(obs_block.keys()))
+            if not discovered:
+                raise RuntimeError("Keine Agents in den zurückgegebenen Observations gefunden.")
+            if self._expected_num_agents is not None and self._expected_num_agents != len(discovered):
+                raise ValueError(
+                    f"Agentenanzahl stimmt nicht überein (expected={self._expected_num_agents}, discovered={len(discovered)}, ids={discovered})"
+                )
+            self.possible_agents = discovered
+            self.agent_name_mapping = {name: i for i, name in enumerate(self.possible_agents)}
+            self._agents_initialized = True
+
+        self.agents = self.possible_agents[:]
+
+        observations = self._decode_observations(obs_block)
         infos = {agent: {} for agent in self.agents}
-        
         return observations, infos
 
     def step(self, actions):
