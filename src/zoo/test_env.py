@@ -5,7 +5,8 @@ if __name__ == "__main__":
     print("Test started...")
     EXPERIMENT = "experiments/footbot_5.argos"
 
-    env = ArgosEnv(argos_file=EXPERIMENT)
+    # Use a small max_steps first to test truncation behavior
+    env = ArgosEnv(argos_file=EXPERIMENT, max_steps=5)
     time.sleep(1.0)
 
     print("\nStarting interaction loop...")
@@ -16,22 +17,35 @@ if __name__ == "__main__":
     ACTION_PATTERN_A = [1, 3, 4, 0, 2]
     ACTION_PATTERN_B = [2, 4, 3, 0, 1]
 
-    for step in range(10):
+    for step in range(10):  # Intentionally exceed max_steps to trigger truncation
         actions = {}
         pattern = ACTION_PATTERN_A if (step // 5) % 2 == 0 else ACTION_PATTERN_B
         for idx, agent in enumerate(env.agents):
             actions[agent] = pattern[idx % len(pattern)]
 
         print(f"\n--- Step {step} | Actions: {actions} ---")
-        observations, _, _, _, _ = env.step(actions)
-        first_agent = env.agents[0]
-        prox = observations[first_agent]['proximity']
-        print(f"Obs[{first_agent}].proximity (len={len(prox)}): {prox[:6].round(2)} ...")
+        observations, _, terminations, truncations, _ = env.step(actions)
+        if env.agents:
+            first_agent = env.agents[0]
+            prox = observations[first_agent]['proximity']
+            print(f"Obs[{first_agent}].proximity (len={len(prox)}): {prox[:6].round(2)} ...")
+        else:
+            # Episode ended due to truncation
+            print(f"Episode ended at step={step}. terminations={terminations} truncations={truncations}")
+            break
         time.sleep(0.05)
 
     print("\nLoop finished. Resetting environment...")
-    observations, infos = env.reset()
-    print("Reset successful.")
+    observations, infos = env.reset(options={"max_steps": 3})
+    print("Reset successful (new max_steps=3). Running quick 4-step loop to confirm new truncation...")
+    for step in range(4):
+        actions = {agent: ACTION_PATTERN_A[0] for agent in env.agents}
+        observations, _, _, truncs, _ = env.step(actions)
+        if not env.agents:
+            print(f"Truncated after {step+1} steps as expected: {truncs}")
+            break
+    if env.agents:
+        print("[WARN] Expected truncation did not occur within 3 steps.")
 
     # Optional: env.close()
     print("Test finished.")

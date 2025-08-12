@@ -11,7 +11,7 @@ from typing import Optional
 class ArgosEnv(ParallelEnv):
     metadata = {"render_modes": ["human"], "name": "argos_v0"}
 
-    def __init__(self, argos_file: str, expected_num_agents: Optional[int] = None, startup_delay: float = 3.0):
+    def __init__(self, argos_file: str, expected_num_agents: Optional[int] = None, startup_delay: float = 3.0, max_steps: int = 1000):
         """ARGoS ParallelEnv wrapper.
 
         Parameters
@@ -22,9 +22,13 @@ class ArgosEnv(ParallelEnv):
             Expected number of agents (validation). If None, no check is performed.
         startup_delay : float
             Time in seconds given to the simulator to start up.
+        max_steps : int
+            Truncation time limit (episode length). Can be overridden per reset via options["max_steps"].
         """
         self.argos_file_path = argos_file
         self._expected_num_agents = expected_num_agents
+        self._max_steps = int(max_steps)  # Episode limt (truncation criterion)
+        self.timestep = 0
 
         # Set after the first reset()
         self.possible_agents = []
@@ -64,19 +68,23 @@ class ArgosEnv(ParallelEnv):
         for line in iter(stream.readline, ''):
             print(f"[{prefix}] {line.strip()}", flush=True)
 
+    @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
         # 24 proximity sensor values
         return Dict({
             "proximity": Box(low=0, high=1, shape=(24,), dtype=np.float32),
         })
 
+    @functools.lru_cache(maxsize=None)
     def action_space(self, agent):
         # Discrete action space according to _action_index_to_name
         return Discrete(len(self._action_index_to_name))
 
     def reset(self, seed=None, options=None):
-        # First reset: derive agents dynamically from simulation
+        # Reset episode counters
         self.timestep = 0
+        if options and "max_steps" in options:
+            self._max_steps = int(options["max_steps"])
 
         reply = self.client.send_command("reset")
         obs_block = reply.get("observations", {})
@@ -94,36 +102,42 @@ class ArgosEnv(ParallelEnv):
             self._agents_initialized = True
 
         self.agents = self.possible_agents[:]
-
         observations = self._decode_observations(obs_block)
         infos = {agent: {} for agent in self.agents}
         return observations, infos
 
     def step(self, actions):
-        # Expects dict: agent -> int (discrete action) OR agent -> string (fallback)
+        # If episode finished, comply with ParallelEnv: empty structures
         if not self.agents:
-            raise RuntimeError("No active agents – episode finished or not reset().")
+            if actions:
+                raise RuntimeError("Environment is done; provide empty action dict or reset().")
+            return {}, {}, {}, {}, {}
 
         serialized = {}
         for agent, act in actions.items():
             if agent not in self.agents:
                 raise KeyError(f"Unknown agent '{agent}' in actions.")
-            command = self._convert_action(act)
-            serialized[agent] = command
+            serialized[agent] = self._convert_action(act)
 
         payload = {"actions": serialized}
         reply = self.client.send_command("step", payload=payload)
-
         obs_block = reply.get("observations", {})
         observations = self._decode_observations(obs_block)
 
-        # Placeholder (rewards/terminations to follow in later feature updates)
-        rewards = {agent: 0 for agent in self.agents}
+        rewards = {agent: 0.0 for agent in self.agents}  # Placeholder (FUP-05)
         terminations = {agent: False for agent in self.agents}
         truncations = {agent: False for agent in self.agents}
         infos = {agent: {} for agent in self.agents}
 
         self.timestep += 1
+        if self.timestep >= self._max_steps:
+            # Time limit reached -> truncation
+            truncations = {agent: True for agent in self.agents}
+            result = (observations, rewards, terminations, truncations, infos)
+            # Clear agents to signal episode end
+            self.agents = []
+            return result
+
         return observations, rewards, terminations, truncations, infos
 
     def _decode_observations(self, obs_dict):
@@ -177,7 +191,8 @@ class ArgosEnv(ParallelEnv):
     # ------------------ internal helpers ------------------
     def _convert_action(self, act):
         """Converts discrete index or string into controller command."""
-        if isinstance(act, int):
+        # Accept native ints and numpy integer scalar types
+        if isinstance(act, (int, np.integer)):
             if act < 0 or act >= len(self._action_index_to_name):
                 raise ValueError(f"Action index {act} outside valid range.")
             logical = self._action_index_to_name[act]
