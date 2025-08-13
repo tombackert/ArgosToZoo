@@ -9,15 +9,13 @@
 #include <zmq.hpp>
 
 // Local headers
-#include "my_ipc_controller.h" 
-
 #include "../common/json.hpp"
+#include "my_ipc_controller.h"
 
 using namespace argos;
 using json = nlohmann::json;
 
 class CZooLoopFunctions : public CLoopFunctions {
-
 public:
     /**
      * Constructor
@@ -34,7 +32,8 @@ public:
     /**
      * Initializes the loop functions.
      * This method is called once at the beginning of the simulation.
-     * It sets up the ZeroMQ context and socket, and initializes the controllers.
+     * It sets up the ZeroMQ context and socket, and initializes the
+     * controllers.
      */
     virtual void Init(TConfigurationNode& t_node);
 
@@ -83,7 +82,7 @@ private:
     json ReceiveRequest();
 
     /* Internal state for reward calculation */
-    std::vector<CVector3> m_vecLastPositions; // previous step positions
+    std::vector<CVector3> m_vecLastPositions;  // previous step positions
     bool m_bFirstStep = true;
 };
 
