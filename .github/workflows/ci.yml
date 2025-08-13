@@ -86,15 +86,20 @@ jobs:
       - name: Lint C++
         run: |
           set -eo pipefail
-          FILES=$(find src/plugin -type f \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' \))
+          start_ts=$(date +%s)
+          # Exclude third-party / vendor single-header to avoid long format time
+          FILES=$(find src/plugin -type f \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' \) ! -path 'src/plugin/common/json.hpp')
           if [ -z "$FILES" ]; then
             echo "[lint-c++] No C++ source files found under src/plugin (skip).";
             exit 0;
           fi
-          echo "[lint-c++] clang-format version: $(clang-format --version)" || true
-            # Use xargs safely: -n ensures batching; avoid running with no args.
-          printf '%s\n' $FILES | xargs -n10 clang-format -n --Werror
-          echo "[lint-c++] Completed formatting check on $(echo "$FILES" | wc -w | tr -d ' ') files."
+          count=$(echo "$FILES" | wc -w | tr -d ' ')
+          echo "[lint-c++] File count: $count"
+          echo "[lint-c++] clang-format: $(clang-format --version || echo 'missing')"
+          echo "[lint-c++] Files:"; echo "$FILES" | tr ' ' '\n'
+          printf '%s\n' $FILES | xargs -n8 clang-format -n --Werror
+          end_ts=$(date +%s)
+          echo "[lint-c++] Completed in $((end_ts-start_ts))s."
 
       - name: Lint Python
         run: flake8 src/zoo
