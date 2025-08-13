@@ -161,7 +161,7 @@ Legende: Aufwand (T-shirt) = S (<2h), M (2–6h), L (6–12h), XL (>12h)
 ## Empfohlene Reihenfolge (Roadmap Sprintweise)
 1. Sprint A: FUP-01, FUP-02, FUP-03, FUP-04 (Basis-API stabil) - DONE
 2. Sprint B: FUP-06, FUP-07, FUP-05 (Determinismus + Reward) - DONE
-3. Sprint C: FUP-08, FUP-12, FUP-11, FUP-10 (Robustheit + Tests) - TODO
+3. Sprint C: FUP-08, FUP-12, FUP-11, FUP-10 (Robustheit + Tests) - DONE
 4. Sprint D: FUP-09, FUP-13, FUP-15 (Skalierung + Doku + RL Smoke) - TODO
 5. Optional: FUP-14 (Performance Tuning)  
 

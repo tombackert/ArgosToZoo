@@ -4,6 +4,7 @@ Converted to be executable by pytest while still runnable as a script.
 """
 
 from zoo.argos_env import ArgosEnv
+import pytest
 import time
 from typing import Dict
 
@@ -60,6 +61,7 @@ def run_demo(max_steps: int = 10, controller_level: str = "INFO", loop_level: st
             pass
 
 
+@pytest.mark.integration
 def test_env_smoke():
     """Pytest: basic run ensures agents, observation shape, truncation."""
     env = ArgosEnv(

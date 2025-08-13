@@ -25,6 +25,7 @@ INTEGRATION_KEYWORDS = (
     "graceful_shutdown",
     "seed_restart",
     "reward_variance",
+    "test_env"
 )
 
 
