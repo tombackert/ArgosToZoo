@@ -1,75 +1,101 @@
-# Name des GitHub Actions-Workflows
-name: ArgosToZoo CI
+name: CI
 
-# Löst den Workflow bei jedem Push oder Pull Request auf den 'main'-Branch aus
 on:
   push:
-    branches: [ main ]
+    branches: ["**"]
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-test:
+  fast-python:
+    name: Fast Python (Feature Branch)
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
     runs-on: macos-latest
-
     steps:
-      # Schritt 1: Code aus dem Repository auschecken
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-
-      # Schritt 2: Alle Abhängigkeiten gemäß ARGoS README installieren
-      - name: Install All C++ Dependencies
-        run: |
-          brew install pkg-config cmake libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen zeromq cppzmq clang-format
-
-      # Schritt 3: ARGoS aus dem Quellcode gemäß README installieren
-      - name: Install ARGoS from Source
-        run: |
-          echo "Cloning ARGoS repository..."
-          git clone https://github.com/ilpincy/argos3.git
-          cd argos3
-          echo "Creating build directory..."
-          mkdir build && cd build
-          echo "Running CMake to configure the build..."
-          cmake -DCMAKE_CXX_STANDARD=17 ../src
-          echo "Building ARGoS binaries..."
-          make -j$(sysctl -n hw.ncpu)
-          echo "Building ARGoS documentation (required for install)..."
-          make doc
-          echo "Installing ARGoS..."
-          sudo make install
-
-      # Schritt 4: Python-Umgebung einrichten
-      - name: Set up Python
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-
-      # Schritt 5: Python-Abhängigkeiten installieren
-      - name: Install Python Dependencies
+          python-version: '3.12'
+      - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Lint (Python only)
+        run: flake8 src/zoo
+      - name: Run fast tests (ARGoS-less)
+        run: pytest -q
 
-      # Schritt 6: C++-Code linten
-      - name: Lint C++ code
+  full-integration:
+    name: Full Integration (PR/Main)
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Homebrew deps (C++ & tools)
         run: |
-          find plugin -iname *.h -o -iname *.cpp | xargs clang-format --dry-run --Werror
+          brew update
+          brew install pkg-config cmake libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen zeromq cppzmq clang-format
 
-      # Schritt 7: Python-Code auf Korrektheit prüfen
-      - name: Lint Python code for correctness
+      - name: Clone ARGoS source
         run: |
-          flake8 . --select=F --count --show-source --statistics
+          # Use shallow clone for speed; adjust branch/tag as needed
+            if [ ! -d argos3 ]; then
+              git clone --depth 1 https://github.com/ilpincy/argos3.git
+            fi
 
-      # Schritt 8: C++-Plugin kompilieren
-      - name: Build C++ Plugin
+      - name: Restore ARGoS build cache
+        uses: actions/cache@v4
+        with:
+          path: argos3/build
+          key: macos-argos-build-v1-${{ hashFiles('argos3/src/CMakeLists.txt') }}
+          restore-keys: |
+            macos-argos-build-v1-
+
+      - name: Build & Install ARGoS
+        run: |
+          cd argos3
+          mkdir -p build
+          cd build
+          cmake -DCMAKE_CXX_STANDARD=17 ../src
+          make -j$(sysctl -n hw.ncpu)
+          # Ensure docs (some versions expect doc targets before install)
+          make doc || echo "Doc build failed (non-fatal)"
+          sudo make install
+          which argos3 || (echo "argos3 not on PATH after install" && exit 1)
+          argos3 -q version || echo "Version query failed (check install)"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pettingzoo
+
+      - name: Lint C++
+        run: |
+          find src/plugin -type f \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' \) | xargs clang-format --dry-run --Werror
+
+      - name: Lint Python
+        run: flake8 src/zoo
+
+      - name: Build C++ plugin
         run: |
           mkdir build
           cd build
           cmake ..
-          make
+          make -j$(sysctl -n hw.ncpu)
 
-      # Schritt 9: Python-Tests mit pytest ausführen
-      - name: Run Python Tests
-        run: |
-          pytest
+      - name: Run full test suite
+        run: pytest -q
