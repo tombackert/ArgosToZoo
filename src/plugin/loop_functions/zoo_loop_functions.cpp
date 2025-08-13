@@ -30,7 +30,10 @@ void CZooLoopFunctions::Init(TConfigurationNode& t_node) {
     m_ptZmqSocket = new zmq::socket_t(*m_ptZmqContext, ZMQ_REP);
     
     // Timeout-Werte für den Socket setzen
-    int recv_timeout = 100; // Millisekunden
+    // Deterministic stepping: we block at the end of each simulation step until
+    // the Python side provides the next command. Therefore we use a blocking
+    // receive (no timeout) on the REP socket.
+    int recv_timeout = -1; // blocking
     m_ptZmqSocket->set(zmq::sockopt::rcvtimeo, recv_timeout);
     
     try {
@@ -96,70 +99,40 @@ void CZooLoopFunctions::PreStep() {
 }
 
 void CZooLoopFunctions::PostStep() {
-    LOG << "[DEBUG] ZooLoopFunctions::PostStep()" << std::endl;
-    
-    // Sammle aktuelle Beobachtungen
+    LOG << "[DEBUG] CZooLoopFunctions::PostStep()" << std::endl;
+
+    // Collect observations for the step that just finished.
     json observations = CollectObservations();
-    
+
     try {
-        // ZMQ REQ-REP Protokoll: Erst empfangen, dann antworten
-        // Prüfe, ob Anfragen vom Client vorhanden sind
-        zmq::pollitem_t items[] = {
-            { m_ptZmqSocket->handle(), 0, ZMQ_POLLIN, 0 }
-        };
-        
-        // Warte mit kurzem Timeout auf Anfragen
-        zmq::poll(items, 1, std::chrono::milliseconds(1));
-        
-        if (items[0].revents & ZMQ_POLLIN) {
-            // 1. Zuerst Anfrage vom Client empfangen
-            m_jActions = ReceiveRequest();
-            LOG << "[DEBUG] ZooLoopFunctions::PostStep() Received actions from Python: " << std::endl;
-            LOG << "[DEBUG] Received actions: " << m_jActions.dump() << std::endl;
+        // Deterministic synchronization: block until the Python client sends the next
+        // command (step/reset/close). For a normal 'step' the actions will be applied
+        // in the NEXT simulation tick (1-step latency), which keeps protocol simple.
+        m_jActions = ReceiveRequest(); // blocking (recv)
+        LOG << "[DEBUG] Received command: " << (m_jActions.contains("command") ? m_jActions["command"].dump() : "<none>") << std::endl;
 
-            // 2. Dann mit aktuellen Beobachtungen antworten
-            SendResponse(observations);
-            LOG << "[DEBUG] ZooLoopFunctions::PostStep() Sent observations to Python: " << std::endl;
-            LOG << "[DEBUG] Sent observations: " << observations.dump() << std::endl;
-            
-            // Verbindungsstatus aktualisieren
-            int events = 0;
-            size_t events_size = sizeof(events);
-            zmq_getsockopt(m_ptZmqSocket->handle(), ZMQ_EVENTS, &events, &events_size);
-            bool is_connected = (events & ZMQ_POLLOUT) != 0;
-            LOG << "[INFO] ZooLoopFunctions::PostStep(): ZMQ Connection status: " << (is_connected ? "Connected" : "Disconnected") << std::endl;
-        } else {
-            // Keine Anfrage verfügbar
-            LOG << "[INFO] No request from Python client detected" << std::endl;
+        // Handle reset BEFORE sending observations so that reset requests receive
+        // post-reset observations (fresh state) deterministically.
+        if (m_jActions.contains("command")) {
+            std::string cmd = m_jActions["command"].get<std::string>();
+            if (cmd == "reset") {
+                LOG << "[DEBUG] Processing reset command (synchronous)." << std::endl;
+                CSimulator::GetInstance().Reset();
+                // After reset collect fresh observations (initial state)
+                observations = CollectObservations();
+            } else if (cmd == "close") {
+                LOG << "[DEBUG] Processing close command." << std::endl;
+                // We still send current observations; Python will close afterwards.
+            }
         }
+
+        // Send response with observations (send)
+        SendResponse(observations);
+        LOG << "[DEBUG] Sent observations (size=" << observations.dump().size() << ")" << std::endl;
     } catch (const zmq::error_t& e) {
-        // ZeroMQ-Fehler abfangen und protokollieren
-        LOGERR << "[ERROR] ZooLoopFunctions::PostStep() ZeroMQ error: " << e.what() << std::endl;
+        LOGERR << "[ERROR] PostStep() ZeroMQ error: " << e.what() << std::endl;
     } catch (const std::exception& e) {
-        // Andere Ausnahmen abfangen
-        LOGERR << "[ERROR] ZooLoopFunctions::PostStep() Exception: " << e.what() << std::endl;
-    }
-    
-    // Auf "reset" oder "close" Befehl prüfen
-    if (m_jActions.contains("command")) {
-        if (m_jActions["command"] == "reset") {
-            LOG << "[DEBUG] Resetting simulation" << std::endl;
-            CSimulator::GetInstance().Reset();
-        } else if (m_jActions["command"] == "close") {
-            LOG << "[DEBUG] Terminating simulation" << std::endl;
-            CSimulator::GetInstance().Terminate();
-        }
-    }
-
-    // Auf "reset" oder "close" Befehl prüfen
-    if (m_jActions.contains("command")) {
-        if (m_jActions["command"] == "reset") {
-            LOG << "[DEBUG] Resetting simulation" << std::endl;
-            CSimulator::GetInstance().Reset();
-        } else if (m_jActions["command"] == "close") {
-            std::cout << "[DEBUG] Terminating simulation" << std::endl;
-            CSimulator::GetInstance().Terminate();
-        }
+        LOGERR << "[ERROR] PostStep() Exception: " << e.what() << std::endl;
     }
 }
 

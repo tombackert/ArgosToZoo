@@ -113,12 +113,16 @@ class ArgosEnv(ParallelEnv):
                 raise RuntimeError("Environment is done; provide empty action dict or reset().")
             return {}, {}, {}, {}, {}
 
+        # Serialize and validate actions
         serialized = {}
         for agent, act in actions.items():
             if agent not in self.agents:
                 raise KeyError(f"Unknown agent '{agent}' in actions.")
             serialized[agent] = self._convert_action(act)
 
+        # Deterministic synchronization: The C++ PostStep blocks until this request
+        # arrives. Observations correspond to the state AFTER the last physics tick;
+        # provided actions will be applied to the NEXT tick.
         payload = {"actions": serialized}
         reply = self.client.send_command("step", payload=payload)
         obs_block = reply.get("observations", {})
@@ -131,12 +135,10 @@ class ArgosEnv(ParallelEnv):
 
         self.timestep += 1
         if self.timestep >= self._max_steps:
-            # Time limit reached -> truncation
             truncations = {agent: True for agent in self.agents}
-            result = (observations, rewards, terminations, truncations, infos)
-            # Clear agents to signal episode end
+            out = (observations, rewards, terminations, truncations, infos)
             self.agents = []
-            return result
+            return out
 
         return observations, rewards, terminations, truncations, infos
 

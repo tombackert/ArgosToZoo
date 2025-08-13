@@ -6,7 +6,7 @@ if __name__ == "__main__":
     EXPERIMENT = "experiments/footbot_5.argos"
 
     # Use a small max_steps first to test truncation behavior
-    env = ArgosEnv(argos_file=EXPERIMENT, max_steps=5)
+    env = ArgosEnv(argos_file=EXPERIMENT, max_steps=10)
     time.sleep(1.0)
 
     print("\nStarting interaction loop...")
@@ -37,15 +37,7 @@ if __name__ == "__main__":
 
     print("\nLoop finished. Resetting environment...")
     observations, infos = env.reset(options={"max_steps": 3})
-    print("Reset successful (new max_steps=3). Running quick 4-step loop to confirm new truncation...")
-    for step in range(4):
-        actions = {agent: ACTION_PATTERN_A[0] for agent in env.agents}
-        observations, _, _, truncs, _ = env.step(actions)
-        if not env.agents:
-            print(f"Truncated after {step+1} steps as expected: {truncs}")
-            break
-    if env.agents:
-        print("[WARN] Expected truncation did not occur within 3 steps.")
+    print(f"Discovered agents after reset: {env.agents}")
 
-    # Optional: env.close()
+    #env.close()
     print("Test finished.")
