@@ -3,6 +3,7 @@ from zoo.argos_env import ArgosEnv
 
 EXPERIMENT = 'experiments/footbot_5.argos'
 
+
 def test_reward_variance():
     env = ArgosEnv(EXPERIMENT, max_steps=15)
     obs, info = env.reset(seed=123)
