@@ -54,8 +54,10 @@ Legende: Aufwand (T-shirt) = S (<2h), M (2–6h), L (6–12h), XL (>12h)
 **Aufwand:** M  
 **Beschreibung:** Definiere erste, nachvollziehbare Reward-Heuristik (z.B. Vorwärts-Fortschritt, Kollisionen vermeiden). C++ oder Python berechnet Reward.  
 **Akzeptanzkriterien:**  
-- Nicht-konstanter Reward in Tests (Varianz > 0).  
-- Dokumentierte Formel im Code.  
+- Nicht-konstanter Reward in Tests (Varianz > 0). ✅ `test_reward_variance` grün.  
+- Dokumentierte Formel im Code. ✅ Kommentar in `zoo_loop_functions.cpp` & `argos_env.py`.  
+**Formel:** `reward = dist_xy_since_last_step - 0.5 * max_proximity` (erster Step 0.0).  
+**Follow-Up Ideen:** Zielgerichtete Komponenten (+Goal, -Energy), shaping via Potenzialfelder, Normalisierung pro Schritt.  
 **Abhängigkeiten:** FUP-03, FUP-04.  
 
 ### 6. Deterministische Schritt-Synchronisation
@@ -83,8 +85,8 @@ Legende: Aufwand (T-shirt) = S (<2h), M (2–6h), L (6–12h), XL (>12h)
 **Aufwand:** M  
 **Beschreibung:** Robustere Wiederherstellung bei Timeout / verlorener Socket-State (Dummy-Drain, Reconnect-Handshake „ping“).  
 **Akzeptanzkriterien:**  
-- Simulierte Unterbrechung (Kill Python/ZMQ) -> Reconnect ohne ARGoS Neustart möglich.  
-- Testskript demonstriert Recovery.  
+- Simulierte Unterbrechung (Kill Python/ZMQ) -> Reconnect ohne ARGoS Neustart möglich. ✅ `test_timeout_recovery` grün.  
+- Testskript demonstriert Recovery. ✅ Socket-Close -> automatischer Reconnect & weitere Steps möglich.  
 **Abhängigkeiten:** Basis, optional FUP-06.  
 
 ### 9. Multi-Agent Socket Architektur Skalieren
@@ -157,10 +159,10 @@ Legende: Aufwand (T-shirt) = S (<2h), M (2–6h), L (6–12h), XL (>12h)
 ---
 
 ## Empfohlene Reihenfolge (Roadmap Sprintweise)
-1. Sprint A: FUP-01, FUP-02, FUP-03, FUP-04 (Basis-API stabil)  
-2. Sprint B: FUP-06, FUP-07, FUP-05 (Determinismus + Reward)  
-3. Sprint C: FUP-08, FUP-12, FUP-11, FUP-10 (Robustheit + Tests)  
-4. Sprint D: FUP-09, FUP-13, FUP-15 (Skalierung + Doku + RL Smoke)  
+1. Sprint A: FUP-01, FUP-02, FUP-03, FUP-04 (Basis-API stabil) - DONE
+2. Sprint B: FUP-06, FUP-07, FUP-05 (Determinismus + Reward) - DONE
+3. Sprint C: FUP-08, FUP-12, FUP-11, FUP-10 (Robustheit + Tests) - TODO
+4. Sprint D: FUP-09, FUP-13, FUP-15 (Skalierung + Doku + RL Smoke) - TODO
 5. Optional: FUP-14 (Performance Tuning)  
 
 ---

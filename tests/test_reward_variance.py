@@ -1,5 +1,4 @@
-import sys, numpy as np
-sys.path.append('src/zoo')
+import numpy as np
 from zoo.argos_env import ArgosEnv
 
 EXPERIMENT = 'experiments/footbot_5.argos'

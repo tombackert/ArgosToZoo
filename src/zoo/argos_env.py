@@ -8,14 +8,21 @@ import os
 import xml.etree.ElementTree as ET
 from pettingzoo import ParallelEnv
 from gymnasium.spaces import Box, Dict, Discrete
-from zmq_client import ZMQClient
+from .zmq_client import ZMQClient
 from typing import Optional
 
 
 class ArgosEnv(ParallelEnv):
     metadata = {"render_modes": ["human"], "name": "argos_v0"}
 
-    def __init__(self, argos_file: str, expected_num_agents: Optional[int] = None, startup_delay: float = 3.0, max_steps: int = 1000):
+    def __init__(
+        self,
+        argos_file: str,
+        expected_num_agents: Optional[int] = None,
+        startup_delay: float = 3.0,
+        max_steps: int = 1000,
+        client_timeout_ms: int = 5000,
+    ):
         """ARGoS ParallelEnv wrapper.
 
         Parameters
@@ -23,39 +30,39 @@ class ArgosEnv(ParallelEnv):
         argos_file : str
             Path to the .argos configuration file.
         expected_num_agents : Optional[int]
-            Expected number of agents (validation). If None, no check is performed.
+            Expected number of agents (validation).
+            If None, no check is performed.
         startup_delay : float
             Time in seconds given to the simulator to start up.
         max_steps : int
-            Truncation time limit (episode length). Can be overridden per reset via options["max_steps"].
+            Truncation time limit (episode length).
+            Can be overridden per reset via opt "max_steps".
+        client_timeout_ms : int
+            Timeout for each ZMQ request (ms) before recovery attempts (FUP-08).
         """
-        self.argos_file_path = argos_file  # Original (unmodified) config file
-        self._active_config_path = argos_file  # Path actually used to launch current simulator
+        # Core config
+        self.argos_file_path = argos_file
+        self._active_config_path = argos_file
         self._expected_num_agents = expected_num_agents
-        self._max_steps = int(max_steps)  # Episode limt (truncation criterion)
+        self._max_steps = int(max_steps)
         self.timestep = 0
         self._current_seed: Optional[int] = None
         self.np_random = None
+        self._client_timeout_ms = client_timeout_ms
 
-        # Set after the first reset()
+        # Agent discovery state
         self.possible_agents = []
         self.agent_name_mapping = {}
         self._agents_initialized = False
 
-        # Start simulator (unseeded initial launch)
+        # Simulator startup
         self._startup_delay = startup_delay
         self._launch_simulator()
 
-        # Public: index -> semantic action; internal -> controller string
-        # These strings must match the C++ evaluation.
+        # Action mapping (discrete -> controller command)
         self._action_index_to_name = [
-            "stop",          # 0
-            "forward",       # 1
-            "backward",      # 2
-            "turn_left",     # 3
-            "turn_right"     # 4
+            "stop", "forward", "backward", "turn_left", "turn_right"
         ]
-        # Mapping to previously used command strings (compatibility)
         self._action_name_to_command = {
             "stop": "stop",
             "forward": "forward_speed",
@@ -86,11 +93,11 @@ class ArgosEnv(ParallelEnv):
         if options and "max_steps" in options:
             self._max_steps = int(options["max_steps"])
 
-        # Seeding: if a new seed is provided, restart underlying simulator with that seed
+        # Seeding: restart underlying simulator if a new seed is provided
         if seed is not None and seed != self._current_seed:
             self._apply_seed_and_restart(seed)
         elif seed is not None:
-            # Even if same seed, ensure we set np_random for downstream reproducibility
+            # Same seed: still set np_random for downstream reproducibility
             self.np_random = np.random.default_rng(seed)
 
         reply = self.client.send_command("reset")
@@ -100,12 +107,19 @@ class ArgosEnv(ParallelEnv):
             discovered = sorted(list(obs_block.keys()))
             if not discovered:
                 raise RuntimeError("No agents found in returned observations.")
-            if self._expected_num_agents is not None and self._expected_num_agents != len(discovered):
+            if (
+                self._expected_num_agents is not None
+                and self._expected_num_agents != len(discovered)
+            ):
                 raise ValueError(
-                    f"Agent count does not match (expected={self._expected_num_agents}, discovered={len(discovered)}, ids={discovered})"
+                    "Agent count does not match (expected="
+                    f"{self._expected_num_agents}, discovered={len(discovered)},"
+                    f" ids={discovered})"
                 )
             self.possible_agents = discovered
-            self.agent_name_mapping = {name: i for i, name in enumerate(self.possible_agents)}
+            self.agent_name_mapping = {
+                name: i for i, name in enumerate(self.possible_agents)
+            }
             self._agents_initialized = True
 
         self.agents = self.possible_agents[:]
@@ -117,7 +131,9 @@ class ArgosEnv(ParallelEnv):
         # If episode finished, comply with ParallelEnv: empty structures
         if not self.agents:
             if actions:
-                raise RuntimeError("Environment is done; provide empty action dict or reset().")
+                raise RuntimeError(
+                    "Environment is done; provide empty action dict or reset()."
+                )
             return {}, {}, {}, {}, {}
 
         # Serialize and validate actions
@@ -127,22 +143,28 @@ class ArgosEnv(ParallelEnv):
                 raise KeyError(f"Unknown agent '{agent}' in actions.")
             serialized[agent] = self._convert_action(act)
 
-        # Deterministic synchronization: The C++ PostStep blocks until this request
-        # arrives. Observations correspond to the state AFTER the last physics tick;
+        # Sync: C++ blocks until this request; obs are post tick.
         # provided actions will be applied to the NEXT tick.
         payload = {"actions": serialized}
         reply = self.client.send_command("step", payload=payload)
         obs_block = reply.get("observations", {})
         observations = self._decode_observations(obs_block)
 
-    # Rewards: if server sends 'rewards' block, use it, else default 0.0
-    # Reward heuristic (FUP-05) implemented in C++ loop functions:
-    #   reward = distance_moved_xy_since_last_step - 0.5 * max_proximity_reading
-    #   (First step after reset => 0.0 baseline). See C++ comment for rationale.
-        raw_rewards = reply.get("rewards", None) or reply.get("observations", {}).get("rewards", {})
+        # Rewards: if server sends 'rewards' block, use it, else default 0.0
+        # Reward heuristic (FUP-05) lives in C++ loop:
+        #   reward = distance_moved_xy_since_last_step - 0.5 * max_proximity_reading
+        #   (First step after reset => 0.0 baseline). See C++ comment for rationale.
+        raw_rewards = (
+            reply.get("rewards", None)
+            or reply.get("observations", {}).get("rewards", {})
+        )
         rewards = {}
         for agent in self.agents:
-            rewards[agent] = float(raw_rewards.get(agent, 0.0)) if isinstance(raw_rewards, dict) else 0.0
+            rewards[agent] = (
+                float(raw_rewards.get(agent, 0.0))
+                if isinstance(raw_rewards, dict)
+                else 0.0
+            )
         terminations = {agent: False for agent in self.agents}
         truncations = {agent: False for agent in self.agents}
         infos = {agent: {} for agent in self.agents}
@@ -162,10 +184,17 @@ class ArgosEnv(ParallelEnv):
             prox_raw = np.array(obs.get("proximity", []), dtype=np.float32)
             # FUP-03: Validate length (FootBot proximity sensor typically 24 readings)
             if prox_raw.shape != (24,):
-                # If length differs, attempt padding/truncation and flag via print (later: logging)
-                print(f"[WARN] Proximity vector length {prox_raw.shape} != 24. Auto-adjusting.")
+                # Length differs: pad/truncate and flag (later: logging)
+                print(
+                    f"[WARN] Proximity vector length {prox_raw.shape} != 24. Auto-adjusting."
+                )
                 if prox_raw.size < 24:
-                    prox_raw = np.pad(prox_raw, (0, 24 - prox_raw.size), mode='constant', constant_values=0.0)
+                    prox_raw = np.pad(
+                        prox_raw,
+                        (0, 24 - prox_raw.size),
+                        mode='constant',
+                        constant_values=0.0,
+                    )
                 else:
                     prox_raw = prox_raw[:24]
             # Normalize to [0,1] if values exceed range (heuristic safeguard)
@@ -185,9 +214,15 @@ class ArgosEnv(ParallelEnv):
             space = self.observation_space(agent)
             assert "proximity" in obs, "Missing 'proximity' key in observation"
             prox = obs["proximity"]
-            assert prox.shape == (24,), f"Proximity shape mismatch: {prox.shape}"
-            assert (prox >= 0).all() and (prox <= 1).all(), "Proximity values not in [0,1]"
-            assert space.contains(obs), "Observation not contained in declared space"
+            assert prox.shape == (24,), (
+                f"Proximity shape mismatch: {prox.shape}"
+            )
+            assert (
+                (prox >= 0).all() and (prox <= 1).all()
+            ), "Proximity values not in [0,1]"
+            assert space.contains(obs), (
+                "Observation not contained in declared space"
+            )
         return True
 
     def close(self):
@@ -222,11 +257,19 @@ class ArgosEnv(ParallelEnv):
             ['argos3', '-c', self._active_config_path],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
-        threading.Thread(target=self._log_stream, args=(self.sim_process.stdout, "ARGoS-out"), daemon=True).start()
-        threading.Thread(target=self._log_stream, args=(self.sim_process.stderr, "ARGoS-err"), daemon=True).start()
+        threading.Thread(
+            target=self._log_stream,
+            args=(self.sim_process.stdout, "ARGoS-out"),
+            daemon=True,
+        ).start()
+        threading.Thread(
+            target=self._log_stream,
+            args=(self.sim_process.stderr, "ARGoS-err"),
+            daemon=True,
+        ).start()
         time.sleep(self._startup_delay)
         # Recreate client (new ZMQ server instance in simulator)
-        self.client = ZMQClient(port="5555")
+        self.client = ZMQClient(port="5555", timeout_ms=self._client_timeout_ms)
 
     def _shutdown_simulator(self):
         if hasattr(self, 'client') and self.client:
@@ -247,10 +290,11 @@ class ArgosEnv(ParallelEnv):
                     self.sim_process.kill()
 
     def _apply_seed_and_restart(self, seed: int):
-        """Generate a temporary ARGoS config file with the given seed and restart simulator.
+        """Generate a temporary ARGoS config with the given seed then restart.
 
-        ARGoS sets its RNG seed at experiment initialization; to guarantee reproducibility
-        we must restart the process when a new seed is requested.
+        ARGoS sets its RNG seed at experiment initialization; to guarantee
+        reproducibility we must restart the process when a new seed is
+        requested.
         """
         self._current_seed = int(seed)
         self.np_random = np.random.default_rng(self._current_seed)
@@ -261,16 +305,21 @@ class ArgosEnv(ParallelEnv):
             # Find <experiment> node anywhere
             exp_node = root.find('.//experiment')
             if exp_node is None:
-                print("[WARN] No <experiment> node found in ARGoS config; cannot embed random_seed attribute.")
+                print("[WARN] No <experiment> node; cannot set random_seed.")
             else:
                 exp_node.set('random_seed', str(self._current_seed))
             # Write to temp file
-            fd, tmp_path = tempfile.mkstemp(prefix=f"argos_seed_{self._current_seed}_", suffix='.argos')
+            fd, tmp_path = tempfile.mkstemp(
+                prefix=f"argos_seed_{self._current_seed}_", suffix='.argos'
+            )
             os.close(fd)
             tree.write(tmp_path)
             self._active_config_path = tmp_path
         except Exception as e:
-            print(f"[WARN] Failed to create seeded config ({e}); falling back to original config.")
+            print(
+                f"[WARN] Failed to create seeded config ({e});"
+                " using original config."
+            )
             self._active_config_path = self.argos_file_path
         # Restart simulator
         self._shutdown_simulator()

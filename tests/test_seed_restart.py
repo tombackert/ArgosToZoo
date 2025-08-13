@@ -4,20 +4,12 @@ import time
 import psutil
 import pytest
 
-# Ensure argos_env import path
-import sys
-sys.path.append('src/zoo')
-try:
-    from zoo.argos_env import ArgosEnv
-except Exception as e:  # pragma: no cover
-    ArgosEnv = None
+from zoo.argos_env import ArgosEnv
 
 EXPERIMENT = "experiments/footbot_5.argos"
 
 @pytest.mark.timeout(30)
 def test_seed_same_does_not_restart(tmp_path):
-    if ArgosEnv is None:
-        pytest.skip(f"ArgosEnv import failed: {e}")
     env = ArgosEnv(EXPERIMENT, max_steps=2)
     try:
         # First reset with seed A

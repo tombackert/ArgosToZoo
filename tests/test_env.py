@@ -1,4 +1,4 @@
-from argos_env import ArgosEnv
+from zoo.argos_env import ArgosEnv
 import time
 
 if __name__ == "__main__":
