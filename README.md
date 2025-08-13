@@ -78,6 +78,83 @@ python manual_control.py
 
 Control the robots by typing `w`, `a`, `s`, `d`, or `stop` in the Python terminal.
 
+## Testing
+
+The automated test suite (FUP-11) validates:
+
+| Area | Purpose |
+|------|---------|
+| API compliance | PettingZoo parallel API structure & lifecycle |
+| Reward variance | Ensures non-constant shaping signal |
+| Seeding | Deterministic restart & simulator re-seed logic |
+| Timeout recovery | Socket resilience (ZeroMQ reconnection) |
+| Graceful shutdown | Idempotent `close()` & process cleanup |
+
+Full local run (all available tests):
+```bash
+pytest -q
+```
+
+Fast logic-only selection (skips named integration-style tests):
+```bash
+pytest -k "not timeout and not graceful" -q
+```
+
+PettingZoo API smoke check (manual):
+```bash
+python -m pettingzoo.test.parallel_api_test zoo.argos_env:ArgosEnv
+```
+
+Style-only lint:
+```bash
+flake8 src/zoo
+```
+
+CI mapping (`.github/workflows/ci.yml`):
+- Feature branch push → fast Python job (ARGoS-dependent tests auto-skip if binary missing).
+- PR to main / push on main → full integration job builds ARGoS & runs entire suite.
+
+## CI & Development Workflow
+
+The CI (see `.github/workflows/ci.yml`) is optimized for quick Python feedback on feature branches and full integration guarantees on PRs/main:
+
+| Scenario | Job | What runs | ARGoS Build | Approx Time |
+|----------|-----|-----------|-------------|-------------|
+| Push to feature branch | `fast-python` | flake8 (Python), pytest (all tests; ARGoS tests auto-skip if no binary) | No | ~1–2 min |
+| Pull Request → `main` | `full-integration` | Brew deps, ARGoS clone + cached incremental build, C++ lint, plugin build, full pytest | Yes | ~5–7 min first run; faster with cache |
+| Push to `main` | `full-integration` | Same as PR | Yes | ~5–7 min |
+
+Caching: The ARGoS build directory (`argos3/build`) is cached. Subsequent PR runs reuse object files, cutting incremental build time. The install step always runs to ensure the `argos3` binary is on PATH.
+
+Manual local full integration test (mirrors CI):
+```bash
+brew install pkg-config cmake libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen zeromq cppzmq clang-format
+git clone https://github.com/ilpincy/argos3.git
+cd argos3 && mkdir build && cd build
+cmake -DCMAKE_CXX_STANDARD=17 ../src && make -j$(sysctl -n hw.ncpu) && make doc && sudo make install
+cd ../../
+pip install -r requirements.txt
+pytest -q
+```
+
+Troubleshooting CI:
+- ARGoS not found: Check the log section "Build & Install ARGoS" and confirm `argos3 -q version` output.
+- Cache not used: Ensure cache key hasn't changed (CMakeLists modifications re-trigger full compile).
+- Failing C++ lint: Run `clang-format -i` locally on `src/plugin/**/*.cpp` & `*.h`.
+- Skipped integration tests in `fast-python`: This is expected; they re-run fully in the PR job.
+
+Contribution Guidelines (short):
+1. Create feature branch: `git checkout -b feature/<short-name>`.
+2. Write/adjust tests first (reward, seeding, recovery, shutdown).
+3. Run local lint & tests: `flake8 src/zoo && pytest -q`.
+4. Push (fast CI). Open PR to trigger full integration.
+5. Merge only when full integration green.
+
+
+
+
+
+
 ## Project Management
 
 <details>
