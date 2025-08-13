@@ -1,9 +1,11 @@
 import numpy as np
+import pytest
 from zoo.argos_env import ArgosEnv
 
 EXPERIMENT = 'experiments/footbot_5.argos'
 
 
+@pytest.mark.integration
 def test_reward_variance():
     env = ArgosEnv(EXPERIMENT, max_steps=15)
     obs, info = env.reset(seed=123)

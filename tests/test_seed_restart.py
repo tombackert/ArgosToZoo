@@ -9,6 +9,7 @@ from zoo.argos_env import ArgosEnv
 EXPERIMENT = "experiments/footbot_5.argos"
 
 
+@pytest.mark.integration
 @pytest.mark.timeout(30)
 def test_seed_same_does_not_restart(tmp_path):
     env = ArgosEnv(EXPERIMENT, max_steps=2)
