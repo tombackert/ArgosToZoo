@@ -81,6 +81,10 @@ private:
     json CollectObservations();
     void SendResponse(const json& j_response);
     json ReceiveRequest();
+
+    /* Internal state for reward calculation */
+    std::vector<CVector3> m_vecLastPositions; // previous step positions
+    bool m_bFirstStep = true;
 };
 
 #endif

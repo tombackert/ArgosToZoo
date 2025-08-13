@@ -8,7 +8,7 @@ import pytest
 import sys
 sys.path.append('src/zoo')
 try:
-    from argos_env import ArgosEnv
+    from zoo.argos_env import ArgosEnv
 except Exception as e:  # pragma: no cover
     ArgosEnv = None
 

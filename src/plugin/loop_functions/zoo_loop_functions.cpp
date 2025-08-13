@@ -55,6 +55,9 @@ void CZooLoopFunctions::Init(TConfigurationNode& t_node) {
         m_vecControllers.push_back(&cController);
     }
     LOG << "[INFO] ZooLoopFunctions::Init(): Found and stored " << m_vecControllers.size() << " controllers." << std::endl;
+    // Initialize last positions vector
+    m_vecLastPositions.resize(m_vecControllers.size(), CVector3());
+    m_bFirstStep = true;
 }
 
 void CZooLoopFunctions::PreStep() {
@@ -101,8 +104,51 @@ void CZooLoopFunctions::PreStep() {
 void CZooLoopFunctions::PostStep() {
     LOG << "[DEBUG] CZooLoopFunctions::PostStep()" << std::endl;
 
-    // Collect observations for the step that just finished.
+    // Collect observations (includes positions) for the step that just finished.
     json observations = CollectObservations();
+    // Compute rewards
+    // Reward design (FUP-05):
+    //   For each agent i at timestep t>0 we compute:
+    //       progress_i = euclidean_distance( (x_t, y_t), (x_{t-1}, y_{t-1}) )
+    //       collision_proxy_i = max(proximity_readings_i)
+    //       reward_i = progress_i - 0.5 * collision_proxy_i
+    //   Rationale:
+    //     - progress encourages forward (any) movement in the plane
+    //     - max proximity rises when near obstacles -> subtraction discourages collisions / crowding
+    //     - weight 0.5 is an initial heuristic chosen to ensure early variance without dominating progress
+    //   First step after reset uses reward 0.0 (no previous position baseline). Future tuning / shaping
+    //   (e.g. goal seeking, energy penalties) can extend this formula while keeping the interface stable.
+    json rewards_json;
+    if (m_bFirstStep) {
+        // First step: reward = 0, set baseline positions
+        for (size_t i = 0; i < m_vecControllers.size(); ++i) {
+            std::string agent_id = "robot_" + std::to_string(i);
+            rewards_json[agent_id] = 0.0;
+            // baseline stored inside CollectObservations already
+        }
+        m_bFirstStep = false;
+    } else {
+        for (size_t i = 0; i < m_vecControllers.size(); ++i) {
+            std::string agent_id = "robot_" + std::to_string(i);
+            // Distance moved in XY plane since last step
+            CVector3 lastPos = m_vecLastPositions[i];
+            CVector3 curPos;
+            curPos.SetX(observations["observations"][agent_id]["position"][0].get<double>());
+            curPos.SetY(observations["observations"][agent_id]["position"][1].get<double>());
+            // forward progress magnitude
+            Real dx = curPos.GetX() - lastPos.GetX();
+            Real dy = curPos.GetY() - lastPos.GetY();
+            Real dist = std::sqrt(dx*dx + dy*dy);
+            // collision proxy: max proximity reading
+            Real maxProx = 0.0;
+            for (const auto& v : observations["observations"][agent_id]["proximity"]) {
+                maxProx = std::max(maxProx, v.get<double>());
+            }
+            // Reward heuristic: progress - collision_penalty
+            Real reward = dist - 0.5 * maxProx; // weight collision penalty
+            rewards_json[agent_id] = reward;
+        }
+    }
 
     try {
         // Deterministic synchronization: block until the Python client sends the next
@@ -126,8 +172,10 @@ void CZooLoopFunctions::PostStep() {
             }
         }
 
-        // Send response with observations (send)
-        SendResponse(observations);
+    // Attach rewards
+    observations["rewards"] = rewards_json;
+    // Send response with observations + rewards (send)
+    SendResponse(observations);
         LOG << "[DEBUG] Sent observations (size=" << observations.dump().size() << ")" << std::endl;
     } catch (const zmq::error_t& e) {
         LOGERR << "[ERROR] PostStep() ZeroMQ error: " << e.what() << std::endl;
@@ -174,7 +222,26 @@ json CZooLoopFunctions::CollectObservations() {
     json observations;
     for (size_t i = 0; i < m_vecControllers.size(); ++i) {
         std::string agent_id = "robot_" + std::to_string(i);
-        observations[agent_id] = m_vecControllers[i]->GetObservation();
+        json obs = m_vecControllers[i]->GetObservation();
+        // Add position (x,y,z) of foot-bot
+        // Access entity again for position
+        // We can access via controller pointer -> get parent entity name? Simpler: fetch entity list again
+        try {
+            CSpace::TMapPerType& m_cFootbots = GetSpace().GetEntitiesByType("foot-bot");
+            auto it = m_cFootbots.begin();
+            size_t idx = 0;
+            for (; it != m_cFootbots.end(); ++it, ++idx) {
+                if (idx == i) {
+                    CFootBotEntity* pcFootBot = any_cast<CFootBotEntity*>(it->second);
+                    const CVector3& pos = pcFootBot->GetEmbodiedEntity().GetOriginAnchor().Position;
+                    obs["position"] = { pos.GetX(), pos.GetY(), pos.GetZ() };
+                    // Update last positions buffer after using old value (handled in reward computation)
+                    m_vecLastPositions[i] = pos;
+                    break;
+                }
+            }
+        } catch(const std::exception&){ /* ignore */ }
+        observations[agent_id] = obs;
     }
     json response;
     //LOG << "[DEBUG] Observations: " << observations.dump() << std::endl;

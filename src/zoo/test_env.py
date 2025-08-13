@@ -39,5 +39,5 @@ if __name__ == "__main__":
     observations, infos = env.reset(options={"max_steps": 3})
     print(f"Discovered agents after reset: {env.agents}")
 
-    #env.close()
+    env.close()
     print("Test finished.")

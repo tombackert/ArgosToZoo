@@ -11,6 +11,7 @@ from gymnasium.spaces import Box, Dict, Discrete
 from zmq_client import ZMQClient
 from typing import Optional
 
+
 class ArgosEnv(ParallelEnv):
     metadata = {"render_modes": ["human"], "name": "argos_v0"}
 
@@ -134,7 +135,14 @@ class ArgosEnv(ParallelEnv):
         obs_block = reply.get("observations", {})
         observations = self._decode_observations(obs_block)
 
-        rewards = {agent: 0.0 for agent in self.agents}  # Placeholder (FUP-05)
+    # Rewards: if server sends 'rewards' block, use it, else default 0.0
+    # Reward heuristic (FUP-05) implemented in C++ loop functions:
+    #   reward = distance_moved_xy_since_last_step - 0.5 * max_proximity_reading
+    #   (First step after reset => 0.0 baseline). See C++ comment for rationale.
+        raw_rewards = reply.get("rewards", None) or reply.get("observations", {}).get("rewards", {})
+        rewards = {}
+        for agent in self.agents:
+            rewards[agent] = float(raw_rewards.get(agent, 0.0)) if isinstance(raw_rewards, dict) else 0.0
         terminations = {agent: False for agent in self.agents}
         truncations = {agent: False for agent in self.agents}
         infos = {agent: {} for agent in self.agents}
@@ -177,7 +185,7 @@ class ArgosEnv(ParallelEnv):
             space = self.observation_space(agent)
             assert "proximity" in obs, "Missing 'proximity' key in observation"
             prox = obs["proximity"]
-            assert prox.shape == (24,), f"Proximity shape mismatch: {prox.shape}" 
+            assert prox.shape == (24,), f"Proximity shape mismatch: {prox.shape}"
             assert (prox >= 0).all() and (prox <= 1).all(), "Proximity values not in [0,1]"
             assert space.contains(obs), "Observation not contained in declared space"
         return True
