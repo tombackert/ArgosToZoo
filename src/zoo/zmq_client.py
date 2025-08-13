@@ -1,15 +1,16 @@
 # zmq_client.py
 import zmq
-import json
 import time
+
 
 class ZMQClient:
     """A resilient ZeroMQ client using a REQ socket with polling."""
 
-    def __init__(self, port="5555", timeout_ms=5000, handshake_attempts=3, handshake_timeout_ms=1000):
+    def __init__(self, port="5555", timeout_ms=5000,
+                 handshake_attempts=3, handshake_timeout_ms=1000):
         """
         Initializes the client, context, and socket.
-        
+
         Args:
             port (str): The port to connect to.
             timeout_ms (int): The timeout in milliseconds for waiting for a reply.
@@ -83,7 +84,7 @@ class ZMQClient:
             "command": command,
             "payload": payload or {}
         }
-        
+
         attempt = 0
         last_exc = None
         while attempt <= retries:
@@ -110,7 +111,8 @@ class ZMQClient:
                     continue
         # Exhausted
         if isinstance(last_exc, TimeoutError):
-            raise TimeoutError("No response from C++ simulator within the timeout period (after retries)") from last_exc
+            raise TimeoutError(
+                "No response from C++ simulator within the timeout period") from last_exc
         raise last_exc
 
     def close(self):
