@@ -150,6 +150,35 @@ Contribution Guidelines (short):
 4. Push (fast CI). Open PR to trigger full integration.
 5. Merge only when full integration green.
 
+## Logging (FUP-10)
+
+The Python wrapper exposes lightweight, configurable logging to reduce noise during tests/CI and allow structured output when desired.
+
+Usage:
+```python
+from zoo.argos_env import ArgosEnv
+
+# Verbose development mode
+env = ArgosEnv("experiments/footbot_5.argos", log_level="DEBUG")
+
+# Quiet mode (suppresses INFO/DEBUG)
+env_quiet = ArgosEnv("experiments/footbot_5.argos", quiet=True)
+
+# JSON log lines (machine-parsable)
+env_json = ArgosEnv("experiments/footbot_5.argos", log_format="json")
+```
+
+Levels: DEBUG < INFO < WARN < ERROR. Setting `quiet=True` forces level ERROR.
+
+ZMQ Client Logging: Internal ZeroMQ client now uses the same lightweight logger (DEBUG messages for send attempts, WARN on retries, INFO on successful recovery).
+
+To silence almost everything in a custom script:
+```python
+env = ArgosEnv("experiments/footbot_5.argos", quiet=True)
+```
+
+Future extensions (optional): integrate Python's standard logging configuration or expose an environment variable (e.g. ARGOS_ENV_LOG_LEVEL).
+
 
 
 

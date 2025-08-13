@@ -2,15 +2,51 @@
 
 #include <argos3/core/utility/logging/argos_log.h>
 
+#include <algorithm>
+
+/* Helper: map string env/config to log level */
+static CMyIPCController::ELogLevel ControllerDefaultLogLevel() {
+    const char* env = std::getenv("ARGOS_CONTROLLER_LOG_LEVEL");
+    if (!env) return CMyIPCController::ELogLevel::INFO;
+    std::string s(env);
+    std::transform(s.begin(), s.end(), s.begin(), ::toupper);
+    if (s == "DEBUG") return CMyIPCController::ELogLevel::DEBUG;
+    if (s == "WARN") return CMyIPCController::ELogLevel::WARN;
+    if (s == "ERROR") return CMyIPCController::ELogLevel::ERROR;
+    return CMyIPCController::ELogLevel::INFO;
+}
+
 CMyIPCController::CMyIPCController()
-    : m_pcWheels(NULL), m_pcProximity(NULL), m_sCurrentAction("stop") {
+    : m_pcWheels(NULL),
+      m_pcProximity(NULL),
+      m_sCurrentAction("stop"),
+      m_sLastAppliedAction("stop"),
+      m_eLogLevel(ControllerDefaultLogLevel()) {
+}
+
+void CMyIPCController::CppLog(ELogLevel lvl, const std::string& msg) const {
+    if (!Enabled(lvl)) return;
+    switch (lvl) {
+        case ELogLevel::DEBUG:
+            LOG << "[DBG] " << msg << std::endl;
+            break;
+        case ELogLevel::INFO:
+            LOG << msg << std::endl;
+            break;
+        case ELogLevel::WARN:
+            LOGERR << "[WARN] " << msg << std::endl;
+            break;
+        case ELogLevel::ERROR:
+            LOGERR << "[ERR] " << msg << std::endl;
+            break;
+    }
 }
 
 /*
  * Initialization method.
  */
 void CMyIPCController::Init(TConfigurationNode& t_node) {
-    LOG << "[DEBUG] CMyIPCController::Init()" << std::endl;
+    CppLog(ELogLevel::DEBUG, "Init()");
     try {
         m_pcWheels = GetActuator<CCI_DifferentialSteeringActuator>(
             "differential_steering");
@@ -29,9 +65,11 @@ void CMyIPCController::Init(TConfigurationNode& t_node) {
  * "left_speed", "right_speed", and "stop".
  */
 void CMyIPCController::ControlStep() {
-    LOG << "[DEBUG] MyIPCController::ControlStep()" << std::endl;
-    LOG << "[ACTION] MyIPCController::ControlStep() Action: "
-        << m_sCurrentAction << std::endl;
+    // Only log action changes (reduces per-step noise)
+    if (m_sCurrentAction != m_sLastAppliedAction) {
+        CppLog(ELogLevel::DEBUG, std::string("Action -> ") + m_sCurrentAction);
+        m_sLastAppliedAction = m_sCurrentAction;
+    }
     if (m_sCurrentAction == "left_speed") {
         m_pcWheels->SetLinearVelocity(-5.0f, 5.0f);  // left
     } else if (m_sCurrentAction == "right_speed") {
@@ -45,8 +83,8 @@ void CMyIPCController::ControlStep() {
     } else {
         m_pcWheels->SetLinearVelocity(0.0f,
                                       0.0f);  // Unknown action -> stop robot
-        LOGERR << "[WARNING] Unknown action: " << m_sCurrentAction
-               << ". Setting wheels to stop.." << std::endl;
+        CppLog(ELogLevel::WARN,
+               std::string("Unknown action: ") + m_sCurrentAction + "; stop()");
     }
 }
 
@@ -54,16 +92,17 @@ void CMyIPCController::ControlStep() {
  * Reset method. Resets the current action to "stop".
  */
 void CMyIPCController::Reset() {
-    LOG << "[DEBUG] MyIPCController::Reset()" << std::endl;
+    CppLog(ELogLevel::DEBUG, "Reset()");
     m_sCurrentAction = "stop";
-    LOG << "[INFO] MyIPCController reseted." << std::endl;
+    m_sLastAppliedAction = "stop";
+    CppLog(ELogLevel::INFO, "Controller reset");
 }
 
 /*
  * Destroy method.
  */
 void CMyIPCController::Destroy() {
-    LOG << "[INFO] MyIPCController destroyed." << std::endl;
+    CppLog(ELogLevel::INFO, "Controller destroyed");
 }
 
 /*
@@ -71,9 +110,9 @@ void CMyIPCController::Destroy() {
  * This method is used to set the current action based on a command string.
  */
 void CMyIPCController::SetAction(const std::string& action_command) {
-    LOG << "[DEBUG] MyIPCController::SetAction()" << std::endl;
-    m_sCurrentAction = action_command;
-    LOG << "[DEBUG] Action set to: " << m_sCurrentAction << std::endl;
+    if (action_command != m_sCurrentAction) {
+        m_sCurrentAction = action_command;
+    }
 }
 
 /*
@@ -81,7 +120,6 @@ void CMyIPCController::SetAction(const std::string& action_command) {
  * This method returns a JSON object containing the current state of the robot.
  */
 json CMyIPCController::GetObservation() {
-    LOG << "[DEBUG] MyIPCController::GetObservation()" << std::endl;
     const auto& tReadings = m_pcProximity->GetReadings();
     json observation;
     std::vector<double> readings_vector;
@@ -89,8 +127,6 @@ json CMyIPCController::GetObservation() {
         readings_vector.push_back(tReadings[i].Value);
     }
     observation["proximity"] = readings_vector;
-    // LOG << "[INFO] MyIPCController observation: " << observation.dump() <<
-    // std::endl;
     return observation;
 }
 

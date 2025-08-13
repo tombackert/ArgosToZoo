@@ -1,29 +1,50 @@
-# zmq_client.py
+"""ZeroMQ client with retry & recovery (FUP-08) plus structured logging (FUP-10).
+
+Replaces stdout prints with a lightweight logger to allow quiet/test modes.
+"""
 import zmq
 import time
+from typing import Optional
+from .logging_utils import get_logger, SimpleLogger
 
 
 class ZMQClient:
-    """A resilient ZeroMQ client using a REQ socket with polling."""
+    """Resilient ZeroMQ REQ client with poll-based timeout + recovery.
 
-    def __init__(self, port="5555", timeout_ms=5000,
-                 handshake_attempts=3, handshake_timeout_ms=1000):
-        """
-        Initializes the client, context, and socket.
+    Parameters
+    ----------
+    port : str
+        Server port.
+    timeout_ms : int
+        Poll timeout for normal requests (ms).
+    handshake_attempts : int
+        Attempts for recovery handshake.
+    handshake_timeout_ms : int
+        Timeout (ms) for each handshake poll.
+    logger : Optional[SimpleLogger]
+        If provided, used for all log output; otherwise a default INFO logger.
+    """
 
-        Args:
-            port (str): The port to connect to.
-            timeout_ms (int): The timeout in milliseconds for waiting for a reply.
-        """
+    def __init__(
+        self,
+        port: str = "5555",
+        timeout_ms: int = 5000,
+        handshake_attempts: int = 3,
+        handshake_timeout_ms: int = 1000,
+        logger: Optional[SimpleLogger] = None,
+    ):
         self.context = zmq.Context()
         self.port = port
         self.timeout = timeout_ms
         self.handshake_attempts = handshake_attempts
         self.handshake_timeout_ms = handshake_timeout_ms
+        self.logger = logger or get_logger("INFO")
 
         self.poller = zmq.Poller()
         self._create_socket()
-        print(f"ZMQClient initialized, connecting to port {port} (timeout={timeout_ms}ms)...")
+        self.logger.debug(
+            "ZMQClient initialized", port=port, timeout_ms=timeout_ms
+        )
 
     def _create_socket(self):
         # (Re)create and register a REQ socket
@@ -59,12 +80,12 @@ class ZMQClient:
         return False
 
     def _recover(self):
-        print("[ZMQClient] Attempting recovery: recreating socket & handshake...")
+        self.logger.warn("Recovery start: recreating socket & handshake")
         self._destroy_socket()
         self._create_socket()
         if not self._handshake():
             raise RuntimeError("ZMQClient recovery handshake failed after attempts")
-        print("[ZMQClient] Recovery successful.")
+        self.logger.info("Recovery successful")
 
     def send_command(self, command, payload=None, retries=1):
         """
@@ -91,7 +112,9 @@ class ZMQClient:
             try:
                 self.socket.send_json(request)
                 socks = dict(self.poller.poll(self.timeout))
-                print(f"Sent command: [{command}], waiting for reply (attempt {attempt})...")
+                self.logger.debug(
+                    "Command sent; awaiting reply", command=command, attempt=attempt
+                )
                 if self.socket in socks and socks[self.socket] == zmq.POLLIN:
                     reply = self.socket.recv_json()
                     return reply
@@ -99,14 +122,14 @@ class ZMQClient:
                     raise TimeoutError("poll timeout")
             except (TimeoutError, zmq.ZMQError, RuntimeError) as e:
                 last_exc = e
-                print(f"[ZMQClient] Warning: send_command failed ({e}).")
+                self.logger.warn("send_command failed", error=str(e), attempt=attempt)
                 attempt += 1
                 if attempt > retries:
                     break
                 try:
                     self._recover()
                 except Exception as rec_e:
-                    print(f"[ZMQClient] Recovery attempt failed: {rec_e}")
+                    self.logger.error("Recovery attempt failed", error=str(rec_e))
                     last_exc = rec_e
                     continue
         # Exhausted
@@ -117,6 +140,11 @@ class ZMQClient:
 
     def close(self):
         """Closes the socket and terminates the context."""
-        print("Closing ZMQClient.")
-        self.socket.close()
-        self.context.term()
+        try:
+            if getattr(self, "socket", None):
+                self.socket.close(0)
+            if getattr(self, "context", None):
+                self.context.term()
+            self.logger.debug("ZMQClient closed")
+        except Exception as e:
+            self.logger.warn("Error during ZMQClient close", error=str(e))

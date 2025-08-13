@@ -6,6 +6,8 @@
 #include <argos3/plugins/robots/foot-bot/control_interface/ci_footbot_proximity_sensor.h>
 #include <argos3/plugins/robots/generic/control_interface/ci_differential_steering_actuator.h>
 
+#include <string>
+
 // JSON header
 #include "../common/json.hpp"
 
@@ -18,6 +20,8 @@ using json = nlohmann::json;
  */
 class CMyIPCController : public CCI_Controller {
 public:
+    enum class ELogLevel { DEBUG = 0, INFO = 1, WARN = 2, ERROR = 3 };
+
     /* Class constructor */
     CMyIPCController();
 
@@ -64,6 +68,12 @@ public:
     json GetObservation();
 
 private:
+    /* Logging helpers */
+    void CppLog(ELogLevel lvl, const std::string& msg) const;
+    bool Enabled(ELogLevel lvl) const {
+        return static_cast<int>(lvl) >= static_cast<int>(m_eLogLevel);
+    }
+
     /* Pointer to the wheel actuator */
     CCI_DifferentialSteeringActuator* m_pcWheels;
 
@@ -72,6 +82,8 @@ private:
 
     /* Holds the current action*/
     std::string m_sCurrentAction;
+    std::string m_sLastAppliedAction;
+    ELogLevel m_eLogLevel;
 };
 
 #endif

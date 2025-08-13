@@ -17,6 +17,7 @@ using json = nlohmann::json;
 
 class CZooLoopFunctions : public CLoopFunctions {
 public:
+    enum class ELogLevel { DEBUG = 0, INFO = 1, WARN = 2, ERROR = 3 };
     /**
      * Constructor
      * Initializes ZeroMQ context and socket.
@@ -66,6 +67,13 @@ public:
     virtual void Destroy();
 
 private:
+    /* Logging helpers */
+    void LoopLog(ELogLevel lvl, const std::string& msg) const;
+    bool Enabled(ELogLevel lvl) const {
+        return static_cast<int>(lvl) >= static_cast<int>(m_eLogLevel);
+    }
+    static ELogLevel EnvDefaultLogLevel();
+
     /* ZeroMQ context and socket */
     zmq::context_t* m_ptZmqContext;
     zmq::socket_t* m_ptZmqSocket;
@@ -84,6 +92,7 @@ private:
     /* Internal state for reward calculation */
     std::vector<CVector3> m_vecLastPositions;  // previous step positions
     bool m_bFirstStep = true;
+    ELogLevel m_eLogLevel;
 };
 
 #endif

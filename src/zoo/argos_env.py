@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 from pettingzoo import ParallelEnv
 from gymnasium.spaces import Box, Dict, Discrete
 from .zmq_client import ZMQClient
+from .logging_utils import get_logger
 from typing import Optional
 
 
@@ -22,6 +23,11 @@ class ArgosEnv(ParallelEnv):
         startup_delay: float = 3.0,
         max_steps: int = 1000,
         client_timeout_ms: int = 5000,
+        log_level: str = "INFO",
+        log_format: str = "text",
+        quiet: bool = False,
+        controller_log_level: Optional[str] = None,
+        loop_log_level: Optional[str] = None,
     ):
         """ARGoS ParallelEnv wrapper.
 
@@ -39,7 +45,14 @@ class ArgosEnv(ParallelEnv):
             Can be overridden per reset via opt "max_steps".
         client_timeout_ms : int
             Timeout for each ZMQ request (ms) before recovery attempts (FUP-08).
+        controller_log_level : Optional[str]
+            Convenience: if provided sets $ARGOS_CONTROLLER_LOG_LEVEL for the simulator subprocess.
+        loop_log_level : Optional[str]
+            Convenience: if provided sets $ARGOS_LOOP_LOG_LEVEL for the simulator subprocess.
         """
+        effective_level = "ERROR" if quiet else log_level
+        self.logger = get_logger(effective_level, log_format)
+
         # Core config
         self.argos_file_path = argos_file
         self._active_config_path = argos_file
@@ -59,9 +72,14 @@ class ArgosEnv(ParallelEnv):
         self.agent_name_mapping = {}
         self._agents_initialized = False
 
+        # Desired C++ log levels (propagated to subprocess env)
+        self._controller_log_level = controller_log_level
+        self._loop_log_level = loop_log_level
+
         # Simulator startup
         self._startup_delay = startup_delay
         self._launch_simulator()
+        self.logger.debug("Simulator launched", config=self._active_config_path)
 
         # Action mapping (discrete -> controller command)
         self._action_index_to_name = [
@@ -189,9 +207,8 @@ class ArgosEnv(ParallelEnv):
             # FUP-03: Validate length (FootBot proximity sensor typically 24 readings)
             if prox_raw.shape != (24,):
                 # Length differs: pad/truncate and flag (later: logging)
-                print(
-                    f"[WARN] Proximity vector length {prox_raw.shape} != 24. Auto-adjusting."
-                )
+                self.logger.warn(
+                    "Proximity length mismatch; auto-adjust", length=int(prox_raw.size))
                 if prox_raw.size < 24:
                     prox_raw = np.pad(
                         prox_raw,
@@ -237,7 +254,7 @@ class ArgosEnv(ParallelEnv):
         """
         if self._closed:
             return
-        print("Closing ArgosEnv...", flush=True)
+        self.logger.info("Closing ArgosEnv")
         self._shutdown_simulator()
         # Attempt to join log threads briefly (non-blocking overall)
         for t in self._log_threads:
@@ -269,9 +286,15 @@ class ArgosEnv(ParallelEnv):
 
     # ------------------ seeding & process management ------------------
     def _launch_simulator(self):
+        # Propagate current process env and add optional log level overrides
+        env = os.environ.copy()
+        if self._controller_log_level:
+            env["ARGOS_CONTROLLER_LOG_LEVEL"] = self._controller_log_level
+        if self._loop_log_level:
+            env["ARGOS_LOOP_LOG_LEVEL"] = self._loop_log_level
         self.sim_process = subprocess.Popen(
             ['argos3', '-c', self._active_config_path],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env
         )
         # Spawn and track log threads so we can join them on close
         out_thread = threading.Thread(
@@ -343,7 +366,7 @@ class ArgosEnv(ParallelEnv):
             # Find <experiment> node anywhere
             exp_node = root.find('.//experiment')
             if exp_node is None:
-                print("[WARN] No <experiment> node; cannot set random_seed.")
+                self.logger.warn("No <experiment> node; cannot set random_seed")
             else:
                 exp_node.set('random_seed', str(self._current_seed))
             # Write to temp file
@@ -354,10 +377,7 @@ class ArgosEnv(ParallelEnv):
             tree.write(tmp_path)
             self._active_config_path = tmp_path
         except Exception as e:
-            print(
-                f"[WARN] Failed to create seeded config ({e});"
-                " using original config."
-            )
+            self.logger.warn("Failed to create seeded config; using original", error=str(e))
             self._active_config_path = self.argos_file_path
         # Restart simulator
         self._shutdown_simulator()
