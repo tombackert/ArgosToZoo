@@ -3,6 +3,9 @@ import subprocess
 import threading
 import time
 import numpy as np
+import tempfile
+import os
+import xml.etree.ElementTree as ET
 from pettingzoo import ParallelEnv
 from gymnasium.spaces import Box, Dict, Discrete
 from zmq_client import ZMQClient
@@ -25,26 +28,22 @@ class ArgosEnv(ParallelEnv):
         max_steps : int
             Truncation time limit (episode length). Can be overridden per reset via options["max_steps"].
         """
-        self.argos_file_path = argos_file
+        self.argos_file_path = argos_file  # Original (unmodified) config file
+        self._active_config_path = argos_file  # Path actually used to launch current simulator
         self._expected_num_agents = expected_num_agents
         self._max_steps = int(max_steps)  # Episode limt (truncation criterion)
         self.timestep = 0
+        self._current_seed: Optional[int] = None
+        self.np_random = None
 
         # Set after the first reset()
         self.possible_agents = []
         self.agent_name_mapping = {}
         self._agents_initialized = False
 
-        # Start simulator
-        self.sim_process = subprocess.Popen(
-            ['argos3', '-c', self.argos_file_path],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        threading.Thread(target=self._log_stream, args=(self.sim_process.stdout, "ARGoS-out"), daemon=True).start()
-        threading.Thread(target=self._log_stream, args=(self.sim_process.stderr, "ARGoS-err"), daemon=True).start()
-        time.sleep(startup_delay)  # Give simulator time to start
-
-        self.client = ZMQClient(port="5555")
+        # Start simulator (unseeded initial launch)
+        self._startup_delay = startup_delay
+        self._launch_simulator()
 
         # Public: index -> semantic action; internal -> controller string
         # These strings must match the C++ evaluation.
@@ -85,6 +84,13 @@ class ArgosEnv(ParallelEnv):
         self.timestep = 0
         if options and "max_steps" in options:
             self._max_steps = int(options["max_steps"])
+
+        # Seeding: if a new seed is provided, restart underlying simulator with that seed
+        if seed is not None and seed != self._current_seed:
+            self._apply_seed_and_restart(seed)
+        elif seed is not None:
+            # Even if same seed, ensure we set np_random for downstream reproducibility
+            self.np_random = np.random.default_rng(seed)
 
         reply = self.client.send_command("reset")
         obs_block = reply.get("observations", {})
@@ -178,17 +184,7 @@ class ArgosEnv(ParallelEnv):
 
     def close(self):
         print("Closing ArgosEnv...")
-        try:
-            self.client.send_command("close")
-        except TimeoutError:
-            print("Did not receive close confirmation from simulator.")
-        
-        self.client.close()
-        self.sim_process.terminate()
-        try:
-            self.sim_process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.sim_process.kill()
+        self._shutdown_simulator()
 
     # ------------------ internal helpers ------------------
     def _convert_action(self, act):
@@ -211,3 +207,63 @@ class ArgosEnv(ParallelEnv):
             raise TypeError("Action must be int or str.")
 
         return self._action_name_to_command[logical]
+
+    # ------------------ seeding & process management ------------------
+    def _launch_simulator(self):
+        self.sim_process = subprocess.Popen(
+            ['argos3', '-c', self._active_config_path],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
+        threading.Thread(target=self._log_stream, args=(self.sim_process.stdout, "ARGoS-out"), daemon=True).start()
+        threading.Thread(target=self._log_stream, args=(self.sim_process.stderr, "ARGoS-err"), daemon=True).start()
+        time.sleep(self._startup_delay)
+        # Recreate client (new ZMQ server instance in simulator)
+        self.client = ZMQClient(port="5555")
+
+    def _shutdown_simulator(self):
+        if hasattr(self, 'client') and self.client:
+            try:
+                self.client.send_command("close")
+            except Exception:
+                pass
+            try:
+                self.client.close()
+            except Exception:
+                pass
+        if hasattr(self, 'sim_process') and self.sim_process:
+            if self.sim_process.poll() is None:
+                self.sim_process.terminate()
+                try:
+                    self.sim_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.sim_process.kill()
+
+    def _apply_seed_and_restart(self, seed: int):
+        """Generate a temporary ARGoS config file with the given seed and restart simulator.
+
+        ARGoS sets its RNG seed at experiment initialization; to guarantee reproducibility
+        we must restart the process when a new seed is requested.
+        """
+        self._current_seed = int(seed)
+        self.np_random = np.random.default_rng(self._current_seed)
+        # Create seeded config file
+        try:
+            tree = ET.parse(self.argos_file_path)
+            root = tree.getroot()
+            # Find <experiment> node anywhere
+            exp_node = root.find('.//experiment')
+            if exp_node is None:
+                print("[WARN] No <experiment> node found in ARGoS config; cannot embed random_seed attribute.")
+            else:
+                exp_node.set('random_seed', str(self._current_seed))
+            # Write to temp file
+            fd, tmp_path = tempfile.mkstemp(prefix=f"argos_seed_{self._current_seed}_", suffix='.argos')
+            os.close(fd)
+            tree.write(tmp_path)
+            self._active_config_path = tmp_path
+        except Exception as e:
+            print(f"[WARN] Failed to create seeded config ({e}); falling back to original config.")
+            self._active_config_path = self.argos_file_path
+        # Restart simulator
+        self._shutdown_simulator()
+        self._launch_simulator()
