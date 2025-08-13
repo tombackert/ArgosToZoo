@@ -118,3 +118,4 @@ class ZMQClient:
         print("Closing ZMQClient.")
         self.socket.close()
         self.context.term()
+        
