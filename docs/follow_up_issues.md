@@ -124,8 +124,8 @@ Legende: Aufwand (T-shirt) = S (<2h), M (2–6h), L (6–12h), XL (>12h)
 **Aufwand:** S  
 **Beschreibung:** Sicherstellen: Threads join, Pipes geleert (`communicate()`), Prozess-Endstatus geprüft, doppelte Terminate robust.  
 **Akzeptanzkriterien:**  
-- Kein Zombie-Prozess nach `env.close()` (ps Test).  
-- Mehrfaches `close()` ohne Exception.  
+- Kein Zombie-Prozess nach `env.close()` (ps Test). ✅ `test_graceful_shutdown` grün.  
+- Mehrfaches `close()` ohne Exception. ✅ Idempotenz-Flag `_closed`.  
 **Abhängigkeiten:** Basis.  
 
 ### 13. Dokumentation & Developer Guide

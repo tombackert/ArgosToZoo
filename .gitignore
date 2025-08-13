@@ -14,3 +14,7 @@ __pycache__/
 
 # macOS-spezifische Dateien
 .DS_Store
+
+
+# Docs
+docs/instuctions.md

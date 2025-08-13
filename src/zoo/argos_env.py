@@ -49,6 +49,10 @@ class ArgosEnv(ParallelEnv):
         self._current_seed: Optional[int] = None
         self.np_random = None
         self._client_timeout_ms = client_timeout_ms
+        self._closed = False  # Graceful shutdown state flag
+        self._log_threads: list[threading.Thread] = []
+        self._last_return_code: Optional[int] = None
+        self._shutting_down = False
 
         # Agent discovery state
         self.possible_agents = []
@@ -226,8 +230,20 @@ class ArgosEnv(ParallelEnv):
         return True
 
     def close(self):
-        print("Closing ArgosEnv...")
+        """Gracefully release all external resources.
+
+        Idempotent: multiple invocations are safe (FUP-12).
+        Ensures simulator process is terminated and log threads joined.
+        """
+        if self._closed:
+            return
+        print("Closing ArgosEnv...", flush=True)
         self._shutdown_simulator()
+        # Attempt to join log threads briefly (non-blocking overall)
+        for t in self._log_threads:
+            if t.is_alive():
+                t.join(timeout=0.5)
+        self._closed = True
 
     # ------------------ internal helpers ------------------
     def _convert_action(self, act):
@@ -257,21 +273,30 @@ class ArgosEnv(ParallelEnv):
             ['argos3', '-c', self._active_config_path],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
-        threading.Thread(
+        # Spawn and track log threads so we can join them on close
+        out_thread = threading.Thread(
             target=self._log_stream,
             args=(self.sim_process.stdout, "ARGoS-out"),
             daemon=True,
-        ).start()
-        threading.Thread(
+        )
+        err_thread = threading.Thread(
             target=self._log_stream,
             args=(self.sim_process.stderr, "ARGoS-err"),
             daemon=True,
-        ).start()
+        )
+        out_thread.start()
+        err_thread.start()
+        self._log_threads = [out_thread, err_thread]
+        self._closed = False
         time.sleep(self._startup_delay)
         # Recreate client (new ZMQ server instance in simulator)
         self.client = ZMQClient(port="5555", timeout_ms=self._client_timeout_ms)
 
     def _shutdown_simulator(self):
+        # Prevent re-entrancy issues if already closed
+        if hasattr(self, '_shutting_down') and self._shutting_down:
+            return
+        self._shutting_down = True
         if hasattr(self, 'client') and self.client:
             try:
                 self.client.send_command("close")
@@ -281,6 +306,7 @@ class ArgosEnv(ParallelEnv):
                 self.client.close()
             except Exception:
                 pass
+            self.client = None
         if hasattr(self, 'sim_process') and self.sim_process:
             if self.sim_process.poll() is None:
                 self.sim_process.terminate()
@@ -288,6 +314,18 @@ class ArgosEnv(ParallelEnv):
                     self.sim_process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     self.sim_process.kill()
+            # Capture return code for diagnostics
+            self._last_return_code = self.sim_process.returncode
+            # Close pipes explicitly (threads will exit when EOF)
+            try:
+                if self.sim_process.stdout:
+                    self.sim_process.stdout.close()
+                if self.sim_process.stderr:
+                    self.sim_process.stderr.close()
+            except Exception:
+                pass
+            self.sim_process = None
+        self._shutting_down = False
 
     def _apply_seed_and_restart(self, seed: int):
         """Generate a temporary ARGoS config with the given seed then restart.
