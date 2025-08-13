@@ -31,7 +31,8 @@ if __name__ == "__main__":
             print(f"Obs[{first_agent}].proximity (len={len(prox)}): {prox[:6].round(2)} ...")
         else:
             # Episode ended due to truncation
-            print(f"Episode ended at step={step}. terminations={terminations} truncations={truncations}")
+            print(f"Episode ended at step={step}. "
+                  "terminations={terminations} truncations={truncations}")
             break
         time.sleep(0.05)
 

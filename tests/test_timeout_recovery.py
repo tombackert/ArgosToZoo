@@ -4,6 +4,7 @@ from zoo.argos_env import ArgosEnv
 EXPERIMENT = "experiments/footbot_5.argos"
 
 
+@pytest.mark.integration
 @pytest.mark.timeout(60)
 def test_socket_recovery_no_restart():
     """FUP-08: Break client socket and ensure recovery without ARGoS restart.

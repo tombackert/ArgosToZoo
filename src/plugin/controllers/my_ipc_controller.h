@@ -3,9 +3,8 @@
 
 // ARGoS headers
 #include <argos3/core/control_interface/ci_controller.h>
-#include <argos3/plugins/robots/generic/control_interface/ci_differential_steering_actuator.h>
 #include <argos3/plugins/robots/foot-bot/control_interface/ci_footbot_proximity_sensor.h>
-
+#include <argos3/plugins/robots/generic/control_interface/ci_differential_steering_actuator.h>
 
 // JSON header
 #include "../common/json.hpp"
@@ -13,19 +12,18 @@
 using namespace argos;
 using json = nlohmann::json;
 
-
 /*
  * The controller class definition.
  * It inherits from CCI_Controller.
  */
 class CMyIPCController : public CCI_Controller {
-
 public:
     /* Class constructor */
     CMyIPCController();
 
     /* Class destructor */
-    virtual ~CMyIPCController() {}
+    virtual ~CMyIPCController() {
+    }
 
     /*
      * Initialization method.
@@ -47,7 +45,8 @@ public:
 
     /*
      * Cleanup method.
-     * It is called when the controller is destroyed (e.g., at the end of an experiment).
+     * It is called when the controller is destroyed (e.g., at the end of an
+     * experiment).
      */
     virtual void Destroy();
 
@@ -59,7 +58,8 @@ public:
 
     /*
      * Gets the current observation of the robot.
-     * This method returns a JSON object containing the current state of the robot.
+     * This method returns a JSON object containing the current state of the
+     * robot.
      */
     json GetObservation();
 
