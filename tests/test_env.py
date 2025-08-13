@@ -12,7 +12,7 @@ from typing import Dict
 EXPERIMENT = "experiments/footbot_5.argos"
 
 
-def run_demo(max_steps: int = 10, controller_level: str = "INFO", loop_level: str = "INFO"):
+def run_demo(max_steps: int = 100, controller_level: str = "INFO", loop_level: str = "INFO"):
     """Run a short interaction loop for manual inspection.
 
     Matches the original pattern logic: first 5 steps use ACTION_PATTERN_A,
@@ -21,12 +21,11 @@ def run_demo(max_steps: int = 10, controller_level: str = "INFO", loop_level: st
     env = ArgosEnv(
         argos_file=EXPERIMENT,
         max_steps=max_steps,
-        # Use original longer startup delay semantics
-        startup_delay=3.0,
+        startup_delay=1.0,
         controller_log_level=controller_level,
         loop_log_level=loop_level,
     )
-    # Original script also slept 1s after construction
+
     time.sleep(1.0)
     try:
         env.logger.info("Demo started")
@@ -34,7 +33,7 @@ def run_demo(max_steps: int = 10, controller_level: str = "INFO", loop_level: st
         env.logger.info(f"Discovered agents: {env.agents}")
         ACTION_PATTERN_A = [1, 3, 4, 0, 2]
         ACTION_PATTERN_B = [2, 4, 3, 0, 1]
-        for step in range(10):  # intentionally exceed to provoke truncation
+        for step in range(90):  # intentionally exceed to provoke truncation
             if not env.agents:
                 break
             pattern = ACTION_PATTERN_A if (step // 5) % 2 == 0 else ACTION_PATTERN_B
@@ -94,4 +93,4 @@ def test_env_smoke():
 
 
 if __name__ == "__main__":  # pragma: no cover
-    run_demo(max_steps=10, controller_level="DEBUG", loop_level="DEBUG")
+    run_demo(max_steps=100, controller_level="DEBUG", loop_level="DEBUG")

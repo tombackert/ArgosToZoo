@@ -93,6 +93,13 @@ private:
     std::vector<CVector3> m_vecLastPositions;  // previous step positions
     bool m_bFirstStep = true;
     ELogLevel m_eLogLevel;
+    // Connection state tracking for clearer ZMQ status logs
+    bool m_bSawFirstRequest = false;  // true after first successful recv
+    bool m_bHadPendingReply = false;  // last tick had POLLOUT (ready to send)
+    std::size_t m_unConsecutiveIdle = 0;  // counts ticks without pending reply
+    std::size_t m_unTotalRequests =
+        0;  // successfully received (parsed) requests
+    std::size_t m_unTotalReplies = 0;  // responses sent
 };
 
 #endif

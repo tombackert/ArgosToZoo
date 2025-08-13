@@ -46,7 +46,10 @@ void CZooLoopFunctions::LoopLog(ELogLevel lvl, const std::string& msg) const {
 CZooLoopFunctions::CZooLoopFunctions()
     : m_ptZmqContext(nullptr),
       m_ptZmqSocket(nullptr),
-      m_eLogLevel(EnvDefaultLogLevel()) {
+      m_eLogLevel(EnvDefaultLogLevel()),
+      m_bSawFirstRequest(false),
+      m_bHadPendingReply(false),
+      m_unConsecutiveIdle(0) {
 }
 
 CZooLoopFunctions::~CZooLoopFunctions() {
@@ -89,10 +92,30 @@ void CZooLoopFunctions::PreStep() {
         try {
             zmq_getsockopt(m_ptZmqSocket->handle(), ZMQ_EVENTS, &events,
                            &events_size);
-            bool is_connected = (events & ZMQ_POLLOUT) != 0;
+            bool can_reply =
+                (events & ZMQ_POLLOUT) !=
+                0;  // REP socket ready-to-send (has pending request)
+            if (can_reply) {
+                m_bHadPendingReply = true;
+                m_unConsecutiveIdle = 0;
+            } else {
+                ++m_unConsecutiveIdle;
+                m_bHadPendingReply = false;
+            }
+            // Compose one concise status line every tick (easier to scan)
+            std::string phase;
+            if (!m_bSawFirstRequest)
+                phase = "WaitingForFirstRequest";
+            else if (can_reply)
+                phase = "PendingRequest";
+            else
+                phase = "Idle";
             LoopLog(ELogLevel::DEBUG,
-                    std::string("ZMQ status: ") +
-                        (is_connected ? "Connected" : "Disconnected"));
+                    "ZMQ status phase=" + phase +
+                        " pending=" + std::string(can_reply ? "yes" : "no") +
+                        " total_req=" + std::to_string(m_unTotalRequests) +
+                        " total_rep=" + std::to_string(m_unTotalReplies) +
+                        " idle_ticks=" + std::to_string(m_unConsecutiveIdle));
         } catch (const zmq::error_t& e) {
             LoopLog(ELogLevel::ERROR,
                     std::string("ZMQ connection check failed: ") + e.what());
@@ -243,6 +266,7 @@ json CZooLoopFunctions::CollectObservations() {
 void CZooLoopFunctions::SendResponse(const json& j_response) {
     std::string response_str = j_response.dump();
     m_ptZmqSocket->send(zmq::buffer(response_str), zmq::send_flags::none);
+    ++m_unTotalReplies;
 }
 
 json CZooLoopFunctions::ReceiveRequest() {
@@ -255,6 +279,8 @@ json CZooLoopFunctions::ReceiveRequest() {
                                           : "none"));
     if (received.has_value() && received.value() > 0) {
         try {
+            m_bSawFirstRequest = true;
+            ++m_unTotalRequests;
             return json::parse(request.to_string());
         } catch (const json::parse_error& e) {
             LoopLog(ELogLevel::ERROR,
