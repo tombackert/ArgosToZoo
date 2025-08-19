@@ -1,0 +1,41 @@
+<?xml version="1.0" ?>
+<argos-configuration>
+  <framework>
+    <system threads="0" />
+  <experiment length="0" ticks_per_second="20" random_seed="123" />
+  </framework>
+  <controllers>
+    <my_ipc_controller id="ipc" library="build/src/plugin/controllers/libmy_ipc_controller.dylib">
+      <actuators>
+        <differential_steering implementation="default" />
+      </actuators>
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="false" />
+      </sensors>
+      <params />
+    </my_ipc_controller>
+  </controllers>
+  <loop_functions library="build/src/plugin/loop_functions/libzoo_loop_functions.dylib" label="zoo_loop_functions">
+    <params zmq_port="5555" />
+  </loop_functions>
+  <arena size="6,6,1" center="0,0,0.5">
+    <!-- Ten foot-bots referencing same controller config (shared library instance) -->
+    <foot-bot id="fb_0"><body position="-2,-2,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
+    <foot-bot id="fb_1"><body position="-2,-1,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
+    <foot-bot id="fb_2"><body position="-2,0,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
+    <foot-bot id="fb_3"><body position="-2,1,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
+    <foot-bot id="fb_4"><body position="-2,2,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
+    <foot-bot id="fb_5"><body position="0,-2,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
+    <foot-bot id="fb_6"><body position="0,-1,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
+    <foot-bot id="fb_7"><body position="0,0,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
+    <foot-bot id="fb_8"><body position="0,1,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
+    <foot-bot id="fb_9"><body position="0,2,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
+  </arena>
+  <physics_engines>
+    <dynamics2d id="dyn2d" />
+  </physics_engines>
+  <media />
+  <visualization>
+    <qt-opengl autoplay="true" />
+  </visualization>
+</argos-configuration>
