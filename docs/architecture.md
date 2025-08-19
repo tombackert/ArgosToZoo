@@ -227,3 +227,26 @@ See `scripts/random_policy.py` (added with FUP‑13) for extensible baseline usa
 ---
 
 For deeper conceptual context see `concept.md`; for operational commands refer to `how-to-run.md`.
+
+### 10. RL Compatibility Smoke Test (FUP-15)
+
+To verify the bridge supports a basic learning signal without external RL frameworks, a minimal multi-agent stateless REINFORCE script (`scripts/rl_smoke.py`) is provided. It:
+
+* Creates one softmax preference vector per agent (size = discrete action count).
+* Samples actions each step; ignores observations (baseline functional check only).
+* Collects full-episode discounted returns and applies a Monte Carlo policy gradient update with an exponential moving average baseline.
+* Logs episode mean/total return and the mean probability of the `forward` action (index 1) which typically should rise over episodes if forward movement yields positive shaped reward.
+* Optionally writes CSV metrics for quick plotting.
+
+Example run:
+```bash
+PYTHONPATH=src python scripts/rl_smoke.py --argos experiments/footbot_5.argos \
+  --episodes 20 --steps 50 --seed 123 --gamma 0.95 --lr 0.2 --csv rl_smoke.csv
+```
+
+Interpretation:
+* Rising `mean_forward_prob` indicates the reward shaping supplies a differentiable learning signal.
+* Stable or collapsing probabilities may signal reward saturation, excessive penalty weight, or lack of variance—tune shaping coefficients in C++ loop functions if needed.
+* Because observations are unused, this test isolates communication + reward plumbing correctness from representation learning concerns.
+
+Extending the smoke test to observe-driven policies (future): replace stateless preferences with a linear layer over normalized proximity readings (concatenate across agents or per-agent independent policies) and include simple entropy regularization.
