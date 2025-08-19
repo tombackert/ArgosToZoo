@@ -5,8 +5,6 @@ def main():
     """A client that controls multiple ARGoS robots simultaneously."""
     context = zmq.Context()
     ports = ["5555"]
-    #ports = ["5555", "5556", "5557", "5558", "5559"]
-    
     sockets = []
 
     print("Connecting to ARGoS servers...")
@@ -22,7 +20,7 @@ def main():
 
             if cmd == "exit":
                 break
-            
+
             left_speed, right_speed = 0.0, 0.0
             if cmd == 'w':
                 left_speed, right_speed = 10.0, 10.0
@@ -49,13 +47,14 @@ def main():
             for i, socket in enumerate(sockets):
                 response = socket.recv_json()
                 print(f"Response from robot {i} received: {response}")
-            
+
     except KeyboardInterrupt:
         print("\nExiting client.")
     finally:
         for socket in sockets:
             socket.close()
         context.term()
+
 
 if __name__ == "__main__":
     main()

@@ -22,7 +22,9 @@
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
-      <sensors />
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="true" />
+      </sensors>
       <params port="5555"/>
     </my_ipc_controller>
     
@@ -32,7 +34,9 @@
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
-      <sensors />
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="true" />
+      </sensors>
       <params port="5556"/>
     </my_ipc_controller>
 
@@ -42,7 +46,9 @@
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
-      <sensors />
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="true" />
+      </sensors>
       <params port="5557"/>
     </my_ipc_controller>
     
@@ -52,7 +58,9 @@
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
-      <sensors />
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="true" />
+      </sensors>
       <params port="5558"/>
     </my_ipc_controller>
 
@@ -62,9 +70,12 @@
       <actuators>
         <differential_steering implementation="default" />
       </actuators>
-      <sensors />
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="true" />
+      </sensors>
       <params port="5559"/>
     </my_ipc_controller>
+    
 
     
 
@@ -72,37 +83,48 @@
 
   </controllers>
 
+  <loop_functions library="build/src/plugin/loop_functions/libzoo_loop_functions.dylib"
+                    label="zoo_loop_functions">
+        <params zmq_port="5555" /> 
+  </loop_functions>
+
   <!-- *********************** -->
   <!-- * Arena configuration * -->
   <!-- *********************** -->
   <arena size="5, 5, 1" center="0,0,0.5">
 
     <foot-bot id="fb_0" rab_range="0.8">
-      <body position="-2.0,0,0" orientation="0,0,0" />
+      <body position="0,-2.0,0" orientation="0,0,0" />
       <controller config="ipc_0" />
     </foot-bot>
 
     <foot-bot id="fb_1" rab_range="0.8">
-      <body position="-1.0,0,0" orientation="0,0,0" />
+      <body position="0,-1.0,0" orientation="0,0,0" />
       <controller config="ipc_1" />
     </foot-bot>
 
     <foot-bot id="fb_2" rab_range="0.8">
-      <body position="0.0,0,0" orientation="0,0,0" />
+      <body position="0,0,0" orientation="0,0,0" />
       <controller config="ipc_2" />
     </foot-bot>
 
     <foot-bot id="fb_3" rab_range="0.8">
-      <body position="1.0,0,0" orientation="0,0,0" />
+      <body position="0,1.0,0" orientation="0,0,0" />
       <controller config="ipc_3" />
     </foot-bot>
 
     <foot-bot id="fb_4" rab_range="0.8">
-      <body position="2.0,0,0" orientation="0,0,0" />
+      <body position="0,2.0,0" orientation="0,0,0" />
       <controller config="ipc_4" />
     </foot-bot>
 
-  
+    <distribute>
+      <position method="uniform" min="0,-2,0" max="1,2,0" />
+      <orientation method="constant" values="0,0,0" />
+      <entity quantity="5" max_trials="100">
+        <box id="b" size="0.3,0.3,0.5" movable="false" />
+      </entity>
+    </distribute>
 
   </arena>
 
@@ -122,7 +144,7 @@
   <!-- * Visualization * -->
   <!-- ****************** -->
   <visualization>
-    <qt-opengl>
+    <qt-opengl autoplay="true">
       <camera>
         <placements>
           <placement index="0" position="0,0,13" look_at="0,0,0" up="1,0,0" lens_focal_length="65" />

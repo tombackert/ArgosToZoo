@@ -7,7 +7,7 @@
 ## Overview
 
 - 🚀 **Project Goal:** To create a robust bridge for controlling ARGoS agents using an external Python policy, with the ultimate aim of simulating collective behaviors (e.g., collective transport) trained with MARL.
-- 🏎️ **Architecture:** The system is built on a decoupled client–server architecture. Each robot in ARGoS runs a C++ controller that acts as a ZeroMQ server (REP). An external Python script acts as the client (REQ), sending commands and receiving state information. This ensures the high-performance simulation is handled by C++, while flexible decision-making resides in Python.
+- 🏎️ **Architecture:** Decoupled client–server with a *single* ZeroMQ REP socket hosted by the ARGoS loop functions (central server). Python (`ArgosEnv` PettingZoo wrapper) is the single REQ client sending batched actions and receiving batched observations for all robots every simulation tick. High‑performance physics stays in C++; flexible policy logic lives in Python.
 
 ## Tech Stack
 
@@ -18,17 +18,64 @@
 
 ## Concept
 
-Data in ArgosToZoo flows as follows:
+### Current Data / Control Flow (Unified Batched Socket)
 
-1. **ARGoS (Server):** The C++ controller for each agent starts a ZeroMQ REP server on a unique port and waits for commands. To prevent simulation freezing, it checks for messages non-blockingly.
-2. **Python (Client):** The Python script starts ZeroMQ REQ clients, connecting to each agent's port.
-3. **Action Selection:** The Python script (initially manual input, later a MARL policy) decides on an action for each agent.
-4. **Serialization (Python → C++):** Actions (e.g., wheel speeds) are formatted into a JSON string and sent as a request to the corresponding ARGoS agent.
-5. **Execution:** The C++ controller receives the JSON request, parses it, and applies actions to the robot’s actuators.
-6. **Serialization (C++ → Python):** The controller sends a JSON confirmation reply (e.g., `{"status": "ok"}`), which can be extended to include sensor data/observations.
-7. **Loop:** The cycle continues.
+1. **Central Server (ARGoS Loop Functions):** A single REP socket (default `tcp://*:5555`) lives in the loop functions plugin. Each tick it: (a) advances simulation, (b) gathers observations from all controllers, (c) computes rewards, then blocks waiting for the next Python request.
+2. **Python Client (`ArgosEnv`):** Maintains one REQ socket. Each `step()` call sends a JSON payload containing a per‑agent action map.
+3. **Action Application:** Actions received in tick *T* are applied at the start of tick *T+1* (standard synchronous environment semantics).
+4. **Observation + Reward Collection:** After physics + controller updates, the server collects proximity sensor arrays, positions, and calculates shaped rewards.
+5. **Batched Reply:** A single JSON message with a compact schema (see below) is sent back to Python.
+6. **Loop:** Python decodes to per‑agent observations; policies pick the next actions.
+
+This design (FUP‑09 option A) replaces earlier per‑robot socket plans. It minimizes connection management overhead, enables scaling to dozens of robots with constant socket count, and reduces marshaling cost by packing homogeneous arrays.
 
 ![ARGoS-Python Communication Architecture](docs/argos-python-flowchart.png)
+
+### Observation & Reward Schema
+
+The simulator always returns the unified compact schema (`compact_v1`):
+
+```jsonc
+{
+    "observations": {
+        "schema": "compact_v1",
+        "agents": ["robot_0", "robot_1"],
+        "proximity": [
+            [0.0, 0.02, ... 24 values ...],
+            [0.01, 0.00, ...]
+        ],
+        "position": [
+            [x0, y0, z0],
+            [x1, y1, z1]
+        ],
+        "rewards": {
+            "robot_0": 0.0,
+            "robot_1": 0.0
+        }
+    }
+}
+```
+
+Python normalizes this into a per‑agent dict with only the fields exposed in the declared observation space (currently proximity readings). Positions are reserved for future tasks (e.g., navigation shaping, curriculum signals).
+
+**Reward shaping (FUP‑05):**
+
+```
+reward_i = distance_xy_moved_since_last_step_i - 0.5 * max_proximity_reading_i
+```
+
+The first post‑reset step produces 0.0 for all agents (baseline). This shaping encourages exploration while discouraging close proximity (e.g., collisions / crowding) reflected by high proximity sensor values.
+
+### Rationale for Compact Batched Format
+
+| Concern | Prior (per‑agent JSON objects) | Now (compact arrays) |
+|---------|--------------------------------|----------------------|
+| Message overhead | Repeated keys per agent | Single header, dense arrays |
+| Socket management | One socket per robot | Single socket |
+| Latency scaling | O(N) round‑trips | O(1) per tick |
+| Schema evolution | Hard (need cross‑agent consistency) | Centralized version gating (`schema`) |
+
+Future extensions (e.g., adding battery, IMU, task-specific signals) append new parallel arrays without breaking existing consumers that key off `schema`.
 
 ## How to Run
 
@@ -62,21 +109,294 @@ make                      # Compile the C++ controller plugin
 ```
 The compiled library `libmy_ipc_controller.dylib` will be in `build/controllers/`.
 
-### 3. Run the Experiment
+### 3. Quick Interactive Check (PettingZoo Wrapper)
 
-Open two terminals in the project root:
+Python smoke interaction after build:
 
-**Terminal 1: ARGoS Simulator (C++ Server)**
 ```bash
-argos3 -c experiments/test.argos
+PYTHONPATH=src python - <<'PY'
+from zoo.argos_env import ArgosEnv
+env = ArgosEnv("experiments/footbot_5.argos", loop_log_level="WARN", controller_log_level="ERROR")
+obs, info = env.reset(seed=0)
+for _ in range(3):
+    actions = {a:0 for a in env.agents}  # all 'stop'
+    obs, rew, term, trunc, info = env.step(actions)
+    print({a: float(rew[a]) for a in rew})
+env.close()
+PY
 ```
 
-**Terminal 2: Python Client**
+### 4. Random Policy Script (FUP-13)
+
+Quick end‑to‑end smoke test using uniformly random discrete actions:
+
 ```bash
-python manual_control.py
+PYTHONPATH=src python scripts/random_policy.py --argos experiments/footbot_5.argos --episodes 2 --steps 50 --seed 42
 ```
 
-Control the robots by typing `w`, `a`, `s`, `d`, or `stop` in the Python terminal.
+Example output:
+
+```
+Episode 1/2: total=0.317 mean/agent=0.063 agents=5
+Episode 2/2: total=0.281 mean/agent=0.056 agents=5
+```
+
+Use `--log-level DEBUG` to inspect step-by-step interaction. Implementation lives in `scripts/random_policy.py`.
+
+For deeper implementation details (action mapping, timing, reward shaping, seeding, recovery) see the "Developer Guide" section in `docs/architecture.md` (FUP‑13).
+
+## Testing
+
+The automated test suite (FUP-11) validates:
+
+| Area | Purpose |
+|------|---------|
+| API compliance | PettingZoo parallel API structure & lifecycle |
+| Reward variance | Ensures non-constant shaping signal (compact schema rewards field) |
+| Seeding | Deterministic restart & simulator re-seed logic |
+| Timeout recovery | Socket resilience (ZeroMQ reconnection) |
+| Graceful shutdown | Idempotent `close()` & process cleanup |
+
+Full local run (all available tests):
+```bash
+pytest -q
+```
+
+Fast logic-only selection (skips named integration-style tests):
+```bash
+pytest -k "not timeout and not graceful" -q
+```
+
+PettingZoo API smoke check (manual):
+```bash
+python -m pettingzoo.test.parallel_api_test zoo.argos_env:ArgosEnv
+```
+
+Style-only lint (Python sources only):
+```bash
+flake8 src/zoo
+```
+
+CI mapping (`.github/workflows/ci.yml`):
+- Feature branch push → fast Python job (ARGoS-dependent tests auto-skip if binary missing).
+- PR to main / push on main → full integration job builds ARGoS & runs entire suite.
+
+## CI & Development Workflow
+
+The CI (see `.github/workflows/ci.yml`) is optimized for quick Python feedback on feature branches and full integration guarantees on PRs/main:
+
+| Scenario | Job | What runs | ARGoS Build | Approx Time |
+|----------|-----|-----------|-------------|-------------|
+| Push to feature branch | `fast-python` | flake8 (Python), pytest (all tests; ARGoS tests auto-skip if no binary) | No | ~1–2 min |
+| Pull Request → `main` | `full-integration` | Brew deps, ARGoS clone + cached incremental build, C++ lint, plugin build, full pytest | Yes | ~5–7 min first run; faster with cache |
+| Push to `main` | `full-integration` | Same as PR | Yes | ~5–7 min |
+
+Caching: The ARGoS build directory (`argos3/build`) is cached. Subsequent PR runs reuse object files, cutting incremental build time. The install step always runs to ensure the `argos3` binary is on PATH.
+
+Manual local full integration test (mirrors CI):
+```bash
+brew install pkg-config cmake libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen zeromq cppzmq clang-format
+git clone https://github.com/ilpincy/argos3.git
+cd argos3 && mkdir build && cd build
+cmake -DCMAKE_CXX_STANDARD=17 ../src && make -j$(sysctl -n hw.ncpu) && make doc && sudo make install
+cd ../../
+pip install -r requirements.txt
+pytest -q
+```
+
+Troubleshooting CI:
+- ARGoS not found: Check the log section "Build & Install ARGoS" and confirm `argos3 -q version` output.
+- Cache not used: Ensure cache key hasn't changed (CMakeLists modifications re-trigger full compile).
+- Failing C++ lint: Run `clang-format -i` locally on `src/plugin/**/*.cpp` & `*.h`.
+- Skipped integration tests in `fast-python`: This is expected; they re-run fully in the PR job.
+
+Contribution Guidelines (short):
+1. Create feature branch: `git checkout -b feature/<short-name>`.
+2. Write/adjust tests first (reward, seeding, recovery, shutdown).
+3. Run local lint & tests: `flake8 src/zoo && pytest -q`.
+4. Push (fast CI). Open PR to trigger full integration.
+5. Merge only when full integration green.
+
+## Logging (FUP-10)
+
+Unified, minimal logging across Python + C++ with opt‑in verbosity.
+
+### 1. Python (`SimpleLogger`)
+
+| Feature | Details |
+|---------|---------|
+| Levels | `DEBUG < INFO < WARN < ERROR` |
+| Formats | `text` or `json` (line delimited) |
+| Timestamp | UTC ISO8601 (`...Z`) |
+| Quiet mode | `quiet=True` forces ERROR regardless of `log_level` |
+| Structured fields | `logger.info("step", t=42, phase="Idle")` merges into JSON / prints key=value |
+
+Constructor excerpt:
+```python
+ArgosEnv(
+    argos_file="experiments/footbot_5.argos",
+    log_level="INFO",      # DEBUG/INFO/WARN/ERROR
+    log_format="text",     # or "json"
+    quiet=False,            # True => force ERROR
+    controller_log_level=None,  # pass to C++ controller
+    loop_log_level=None,        # pass to C++ loop functions
+)
+```
+
+Examples:
+```python
+from zoo.argos_env import ArgosEnv
+
+# Verbose development (Python + loop DEBUG)
+env = ArgosEnv(
+    "experiments/footbot_5.argos",
+    log_level="DEBUG",
+    loop_log_level="DEBUG",
+)
+
+# JSON structured lines
+env_json = ArgosEnv(
+    "experiments/footbot_5.argos",
+    log_format="json",
+    log_level="INFO",
+)
+
+# Ultra quiet (CI)
+env_quiet = ArgosEnv(
+    "experiments/footbot_5.argos",
+    quiet=True,
+    controller_log_level="ERROR",
+    loop_log_level="ERROR",
+)
+```
+
+Sample JSON record:
+```json
+{"ts":"2025-08-19T07:15:12.145623Z","level":"DEBUG","msg":"ZMQClient initialized","port":"5555","timeout_ms":5000}
+```
+
+### 2. C++ (Controllers & Loop Functions)
+
+Configure via environment variables (evaluated at simulator start):
+
+| Component | Env Var | Default | Notes |
+|-----------|---------|---------|-------|
+| Controller (per robot) | `ARGOS_CONTROLLER_LOG_LEVEL` | INFO | DEBUG logs action changes + lifecycle |
+| Loop Functions (global) | `ARGOS_LOOP_LOG_LEVEL` | INFO | DEBUG logs ZMQ status + payloads |
+
+Accepted values: `DEBUG`, `INFO`, `WARN`, `ERROR` (case‑insensitive; invalid -> INFO).
+
+Shell usage:
+```bash
+ARGOS_CONTROLLER_LOG_LEVEL=ERROR ARGOS_LOOP_LOG_LEVEL=DEBUG \
+  argos3 -c experiments/footbot_5.argos
+```
+
+Through Python (preferred):
+```python
+env = ArgosEnv(
+    "experiments/footbot_5.argos",
+    controller_log_level="WARN",
+    loop_log_level="DEBUG",
+)
+```
+
+### 3. ZMQ Status Diagnostics (Loop DEBUG)
+
+One concise line each simulation tick:
+```
+ZMQ status phase=PendingRequest pending=yes total_req=42 total_rep=42 idle_ticks=0
+```
+
+Fields:
+| Field | Meaning |
+|-------|---------|
+| phase | High‑level derived state (`WaitingForFirstRequest`, `PendingRequest`, `Idle`) |
+| pending | `yes` if REP socket ready (has request to answer) |
+| total_req | Cumulative received requests |
+| total_rep | Cumulative replies sent |
+| idle_ticks | Consecutive ticks without a pending request |
+
+### 4. Quick Recipes
+
+Development (full detail):
+```bash
+PYTHONPATH=src \
+ARGOS_CONTROLLER_LOG_LEVEL=DEBUG \
+ARGOS_LOOP_LOG_LEVEL=DEBUG \
+python tests/test_env.py -k env_smoke -s
+```
+
+Loop focus (suppress controller noise):
+```bash
+PYTHONPATH=src ARGOS_CONTROLLER_LOG_LEVEL=ERROR ARGOS_LOOP_LOG_LEVEL=DEBUG \
+python tests/test_env.py -k env_smoke -s
+```
+
+Quiet CI:
+```bash
+PYTHONPATH=src ARGOS_CONTROLLER_LOG_LEVEL=ERROR ARGOS_LOOP_LOG_LEVEL=ERROR \
+pytest -q
+```
+
+JSON export snippet:
+```bash
+PYTHONPATH=src python - <<'PY'
+from zoo.argos_env import ArgosEnv
+env = ArgosEnv("experiments/footbot_5.argos", log_format="json", log_level="INFO")
+env.reset(seed=0)
+for _ in range(5):
+    env.step({a:0 for a in env.agents})
+env.close()
+PY
+```
+
+### 5. Edge / Error Behavior
+
+| Scenario | Behavior |
+|----------|----------|
+| Bad Python `log_level` | `ValueError` on construction |
+| Bad `log_format` | `ValueError` (must be `text` or `json`) |
+| `quiet=True` + level supplied | Quiet wins (forces ERROR) |
+| Proximity length mismatch | Warn once per occurrence; auto pad/truncate |
+| Missing actions payload | Loop WARN (client lag / first tick) |
+
+### 6. Cheat Sheet
+
+| Goal | How |
+|------|-----|
+| All debug | `ArgosEnv(..., log_level="DEBUG", loop_log_level="DEBUG", controller_log_level="DEBUG")` |
+| Loop only debug | `loop_log_level="DEBUG", controller_log_level="ERROR"` |
+| Structured logs | `log_format="json"` |
+| Maximum silence | `quiet=True` + export `ARGOS_*_LOG_LEVEL=ERROR` |
+| Inspect ZMQ phases | Loop log level = `DEBUG` |
+
+### 7. Future Extensions
+
+Planned / possible:
+* `ARGOS_ENV_LOG_LEVEL` env var for Python.
+* Bridge to standard `logging` if integration needed.
+* Add correlation IDs (episode/step) automatically in JSON mode.
+
+## Performance (FUP-09 Acceptance)
+
+Preliminary single-process benchmarks (MacBook Pro M1, experiment running on 20Hz):
+
++--------+-------+---------+--------+--------+--------+------------+
+| agents | steps | mean_ms | p95_ms | min_ms | max_ms | payload_kb |
++--------+-------+---------+--------+--------+--------+------------+
+|      5 |   100 |   49.99 |  50.90 |  48.24 |  51.78 |       0.47 |
+|     10 |   100 |   49.98 |  51.00 |  47.99 |  51.22 |       0.94 |
+|     20 |   100 |   49.99 |  50.80 |  48.64 |  51.64 |       1.88 |
++--------+-------+---------+--------+--------+--------+------------+
+
+- agents: Number of simulated robots (Foot-Bots) in the experiment.  
+- steps: Number of measured simulation steps (excluding warmup).  
+- mean_ms: Average duration of an `env.step()` call in milliseconds (ms) – corresponds to the mean simulation latency per tick.  
+- p95_ms: 95th percentile of step latency (ms) – 95% of all steps are faster than this value (shows outliers).  
+- min_ms: Shortest measured step latency (ms).  
+- max_ms: Longest measured step latency (ms).  
+- payload_kb: Average size of the transmitted sensor data per tick (in kilobytes, proximity arrays only, JSON-serialized).
 
 ## Project Management
 

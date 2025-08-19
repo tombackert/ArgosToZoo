@@ -49,9 +49,9 @@
 
   </controllers>
 
-  <loop_functions library="/Users/tom.backert/Desktop/ArgosToZoo/plugin/build/libzeromq_bridge.dylib"
-                    label="zeromq_bridge_loop_functions">
-        <params zmq_port="5555" /> 
+  <loop_functions library="build/src/plugin/loop_functions/libzoo_loop_functions.dylib"
+                    label="zoo_loop_functions">
+       
   </loop_functions>
 
   <!-- *********************** -->

@@ -4,6 +4,7 @@ add_library(my_ipc_controller SHARED
 target_link_libraries(my_ipc_controller PUBLIC
    "/usr/local/lib/argos3/libargos3core_simulator.dylib"
    "/usr/local/lib/argos3/libargos3plugin_simulator_genericrobot.dylib"
+   "/usr/local/lib/argos3/libargos3plugin_simulator_footbot.dylib"
    ${ZeroMQ_LIBRARIES}
 )
 
