@@ -126,6 +126,25 @@ env.close()
 PY
 ```
 
+### 4. Random Policy Script (FUP-13)
+
+Quick end‑to‑end smoke test using uniformly random discrete actions:
+
+```bash
+PYTHONPATH=src python scripts/random_policy.py --argos experiments/footbot_5.argos --episodes 2 --steps 50 --seed 42
+```
+
+Example output:
+
+```
+Episode 1/2: total=0.317 mean/agent=0.063 agents=5
+Episode 2/2: total=0.281 mean/agent=0.056 agents=5
+```
+
+Use `--log-level DEBUG` to inspect step-by-step interaction. Implementation lives in `scripts/random_policy.py`.
+
+For deeper implementation details (action mapping, timing, reward shaping, seeding, recovery) see the "Developer Guide" section in `docs/architecture.md` (FUP‑13).
+
 ## Testing
 
 The automated test suite (FUP-11) validates:
