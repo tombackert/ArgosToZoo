@@ -62,21 +62,11 @@ make                      # Compile the C++ controller plugin
 ```
 The compiled library `libmy_ipc_controller.dylib` will be in `build/controllers/`.
 
-### 3. Run the Experiment
+### 3. Run the test env
 
-Open two terminals in the project root:
-
-**Terminal 1: ARGoS Simulator (C++ Server)**
-```bash
-argos3 -c experiments/test.argos
 ```
-
-**Terminal 2: Python Client**
-```bash
-python manual_control.py
+PYTHONPATH=src ARGOS_LOOP_LOG_LEVEL=DEBUG ARGOS_CONTROLLER_LOG_LEVEL=ERROR python tests/test_env.py
 ```
-
-Control the robots by typing `w`, `a`, `s`, `d`, or `stop` in the Python terminal.
 
 ## Testing
 
@@ -152,37 +142,166 @@ Contribution Guidelines (short):
 
 ## Logging (FUP-10)
 
-The Python wrapper exposes lightweight, configurable logging to reduce noise during tests/CI and allow structured output when desired.
+Unified, minimal logging across Python + C++ with opt‑in verbosity.
 
-Usage:
+### 1. Python (`SimpleLogger`)
+
+| Feature | Details |
+|---------|---------|
+| Levels | `DEBUG < INFO < WARN < ERROR` |
+| Formats | `text` or `json` (line delimited) |
+| Timestamp | UTC ISO8601 (`...Z`) |
+| Quiet mode | `quiet=True` forces ERROR regardless of `log_level` |
+| Structured fields | `logger.info("step", t=42, phase="Idle")` merges into JSON / prints key=value |
+
+Constructor excerpt:
+```python
+ArgosEnv(
+    argos_file="experiments/footbot_5.argos",
+    log_level="INFO",      # DEBUG/INFO/WARN/ERROR
+    log_format="text",     # or "json"
+    quiet=False,            # True => force ERROR
+    controller_log_level=None,  # pass to C++ controller
+    loop_log_level=None,        # pass to C++ loop functions
+)
+```
+
+Examples:
 ```python
 from zoo.argos_env import ArgosEnv
 
-# Verbose development mode
-env = ArgosEnv("experiments/footbot_5.argos", log_level="DEBUG")
+# Verbose development (Python + loop DEBUG)
+env = ArgosEnv(
+    "experiments/footbot_5.argos",
+    log_level="DEBUG",
+    loop_log_level="DEBUG",
+)
 
-# Quiet mode (suppresses INFO/DEBUG)
-env_quiet = ArgosEnv("experiments/footbot_5.argos", quiet=True)
+# JSON structured lines
+env_json = ArgosEnv(
+    "experiments/footbot_5.argos",
+    log_format="json",
+    log_level="INFO",
+)
 
-# JSON log lines (machine-parsable)
-env_json = ArgosEnv("experiments/footbot_5.argos", log_format="json")
+# Ultra quiet (CI)
+env_quiet = ArgosEnv(
+    "experiments/footbot_5.argos",
+    quiet=True,
+    controller_log_level="ERROR",
+    loop_log_level="ERROR",
+)
 ```
 
-Levels: DEBUG < INFO < WARN < ERROR. Setting `quiet=True` forces level ERROR.
+Sample JSON record:
+```json
+{"ts":"2025-08-19T07:15:12.145623Z","level":"DEBUG","msg":"ZMQClient initialized","port":"5555","timeout_ms":5000}
+```
 
-ZMQ Client Logging: Internal ZeroMQ client now uses the same lightweight logger (DEBUG messages for send attempts, WARN on retries, INFO on successful recovery).
+### 2. C++ (Controllers & Loop Functions)
 
-To silence almost everything in a custom script:
+Configure via environment variables (evaluated at simulator start):
+
+| Component | Env Var | Default | Notes |
+|-----------|---------|---------|-------|
+| Controller (per robot) | `ARGOS_CONTROLLER_LOG_LEVEL` | INFO | DEBUG logs action changes + lifecycle |
+| Loop Functions (global) | `ARGOS_LOOP_LOG_LEVEL` | INFO | DEBUG logs ZMQ status + payloads |
+
+Accepted values: `DEBUG`, `INFO`, `WARN`, `ERROR` (case‑insensitive; invalid -> INFO).
+
+Shell usage:
+```bash
+ARGOS_CONTROLLER_LOG_LEVEL=ERROR ARGOS_LOOP_LOG_LEVEL=DEBUG \
+  argos3 -c experiments/footbot_5.argos
+```
+
+Through Python (preferred):
 ```python
-env = ArgosEnv("experiments/footbot_5.argos", quiet=True)
+env = ArgosEnv(
+    "experiments/footbot_5.argos",
+    controller_log_level="WARN",
+    loop_log_level="DEBUG",
+)
 ```
 
-Future extensions (optional): integrate Python's standard logging configuration or expose an environment variable (e.g. ARGOS_ENV_LOG_LEVEL).
+### 3. ZMQ Status Diagnostics (Loop DEBUG)
 
+One concise line each simulation tick:
+```
+ZMQ status phase=PendingRequest pending=yes total_req=42 total_rep=42 idle_ticks=0
+```
 
+Fields:
+| Field | Meaning |
+|-------|---------|
+| phase | High‑level derived state (`WaitingForFirstRequest`, `PendingRequest`, `Idle`) |
+| pending | `yes` if REP socket ready (has request to answer) |
+| total_req | Cumulative received requests |
+| total_rep | Cumulative replies sent |
+| idle_ticks | Consecutive ticks without a pending request |
 
+### 4. Quick Recipes
 
+Development (full detail):
+```bash
+PYTHONPATH=src \
+ARGOS_CONTROLLER_LOG_LEVEL=DEBUG \
+ARGOS_LOOP_LOG_LEVEL=DEBUG \
+python tests/test_env.py -k env_smoke -s
+```
 
+Loop focus (suppress controller noise):
+```bash
+PYTHONPATH=src ARGOS_CONTROLLER_LOG_LEVEL=ERROR ARGOS_LOOP_LOG_LEVEL=DEBUG \
+python tests/test_env.py -k env_smoke -s
+```
+
+Quiet CI:
+```bash
+PYTHONPATH=src ARGOS_CONTROLLER_LOG_LEVEL=ERROR ARGOS_LOOP_LOG_LEVEL=ERROR \
+pytest -q
+```
+
+JSON export snippet:
+```bash
+PYTHONPATH=src python - <<'PY'
+from zoo.argos_env import ArgosEnv
+env = ArgosEnv("experiments/footbot_5.argos", log_format="json", log_level="INFO")
+env.reset(seed=0)
+for _ in range(5):
+    env.step({a:0 for a in env.agents})
+env.close()
+PY
+```
+
+### 5. Edge / Error Behavior
+
+| Scenario | Behavior |
+|----------|----------|
+| Bad Python `log_level` | `ValueError` on construction |
+| Bad `log_format` | `ValueError` (must be `text` or `json`) |
+| `quiet=True` + level supplied | Quiet wins (forces ERROR) |
+| Proximity length mismatch | Warn once per occurrence; auto pad/truncate |
+| Missing actions payload | Loop WARN (client lag / first tick) |
+
+### 6. Cheat Sheet
+
+| Goal | How |
+|------|-----|
+| All debug | `ArgosEnv(..., log_level="DEBUG", loop_log_level="DEBUG", controller_log_level="DEBUG")` |
+| Loop only debug | `loop_log_level="DEBUG", controller_log_level="ERROR"` |
+| Structured logs | `log_format="json"` |
+| Maximum silence | `quiet=True` + export `ARGOS_*_LOG_LEVEL=ERROR` |
+| Inspect ZMQ phases | Loop log level = `DEBUG` |
+
+### 7. Future Extensions
+
+Planned / possible:
+* `ARGOS_ENV_LOG_LEVEL` env var for Python.
+* Bridge to standard `logging` if integration needed.
+* Add correlation IDs (episode/step) automatically in JSON mode.
+
+For advanced aggregation, run JSON mode and pipe to your own processor.
 
 ## Project Management
 

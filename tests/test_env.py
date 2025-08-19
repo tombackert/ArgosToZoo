@@ -15,8 +15,7 @@ EXPERIMENT = "experiments/footbot_5.argos"
 def run_demo(max_steps: int = 100, controller_level: str = "INFO", loop_level: str = "INFO"):
     """Run a short interaction loop for manual inspection.
 
-    Matches the original pattern logic: first 5 steps use ACTION_PATTERN_A,
-    next 5 steps ACTION_PATTERN_B, with explicit post-construction delay.
+    Matches the following pattern logic: first 5 steps use ACTION_PATTERN_A, next 5 steps ACTION_PATTERN_B
     """
     env = ArgosEnv(
         argos_file=EXPERIMENT,
@@ -53,7 +52,7 @@ def run_demo(max_steps: int = 100, controller_level: str = "INFO", loop_level: s
         env.reset(options={"max_steps": 3})
         env.logger.info(f"Agents after reset: {env.agents}")
     finally:
-        env.close()
+        #env.close()
         try:
             env.logger.info("Demo finished.")
         except Exception:
