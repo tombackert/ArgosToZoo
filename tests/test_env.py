@@ -18,7 +18,8 @@ def run_demo(
 ):
     """Run a short interaction loop for manual inspection.
 
-    Matches the following pattern logic: first 5 steps use ACTION_PATTERN_A, next 5 steps ACTION_PATTERN_B
+    Matches the following pattern logic: first 5 steps use ACTION_PATTERN_A,
+    next 5 steps ACTION_PATTERN_B
     """
     env = ArgosEnv(
         argos_file=EXPERIMENT,

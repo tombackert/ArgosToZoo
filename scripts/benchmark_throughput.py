@@ -8,9 +8,9 @@ Usage:
   PYTHONPATH=src python scripts/benchmark_throughput.py --agents 5 10 --steps 400 --warmup 100
 """
 from __future__ import annotations
-import argparse, time, statistics
-from pathlib import Path
-from typing import List
+import argparse
+import time
+import statistics
 from zoo.argos_env import ArgosEnv
 
 EXPERIMENT_TEMPLATE = {
