@@ -147,34 +147,6 @@ void CZooLoopFunctions::PreStep() {
 void CZooLoopFunctions::PostStep() {
     LoopLog(ELogLevel::DEBUG, "PostStep()");
     json observations = CollectObservations();
-    // Reward calculation (FUP-05)
-    json rewards_json;
-    if (m_bFirstStep) {
-        for (size_t i = 0; i < m_vecControllers.size(); ++i) {
-            rewards_json["robot_" + std::to_string(i)] = 0.0;
-        }
-        m_bFirstStep = false;
-    } else {
-        for (size_t i = 0; i < m_vecControllers.size(); ++i) {
-            std::string agent_id = "robot_" + std::to_string(i);
-            CVector3 lastPos = m_vecLastPositions[i];
-            CVector3 curPos;
-            curPos.SetX(observations["observations"][agent_id]["position"][0]
-                            .get<double>());
-            curPos.SetY(observations["observations"][agent_id]["position"][1]
-                            .get<double>());
-            Real dx = curPos.GetX() - lastPos.GetX();
-            Real dy = curPos.GetY() - lastPos.GetY();
-            Real dist = std::sqrt(dx * dx + dy * dy);
-            Real maxProx = 0.0;
-            for (const auto& v :
-                 observations["observations"][agent_id]["proximity"]) {
-                maxProx = std::max(maxProx, v.get<double>());
-            }
-            Real reward = dist - 0.5 * maxProx;
-            rewards_json[agent_id] = reward;
-        }
-    }
     try {
         m_jActions = ReceiveRequest();
         if (Enabled(ELogLevel::DEBUG)) {
@@ -192,10 +164,25 @@ void CZooLoopFunctions::PostStep() {
                 observations = CollectObservations();
             } else if (cmd == "close") {
                 LoopLog(ELogLevel::DEBUG, "Process close command");
+            } else if (cmd.rfind("set_loop_log_level:",0)==0) {
+                std::string lvl = cmd.substr(std::string("set_loop_log_level:").size());
+                std::transform(lvl.begin(), lvl.end(), lvl.begin(), ::toupper);
+                ELogLevel newLvl = m_eLogLevel;
+                if (lvl=="DEBUG") newLvl = ELogLevel::DEBUG;
+                else if (lvl=="INFO") newLvl = ELogLevel::INFO;
+                else if (lvl=="WARN") newLvl = ELogLevel::WARN;
+                else if (lvl=="ERROR") newLvl = ELogLevel::ERROR;
+                m_eLogLevel = newLvl;
+                LoopLog(ELogLevel::INFO, std::string("Loop log level updated to ")+lvl);
             }
         }
-        observations["rewards"] = rewards_json;
-        SendResponse(observations);
+    if (Enabled(ELogLevel::DEBUG)) {
+        // Vollständige Observations (Agents, Proximity, Positionen, Rewards)
+        // Achtung: kann sehr groß werden bei vielen Robotern.
+        LoopLog(ELogLevel::DEBUG,
+            std::string("Observations JSON: ") + observations.dump());
+    }
+    SendResponse(observations);
         if (Enabled(ELogLevel::DEBUG))
             LoopLog(ELogLevel::DEBUG,
                     std::string("Sent observations bytes=") +
@@ -210,8 +197,10 @@ void CZooLoopFunctions::PostStep() {
 void CZooLoopFunctions::Reset() {
     for (CMyIPCController* pcController : m_vecControllers)
         pcController->Reset();
-    (void)CollectObservations();  // establish baseline positions
-    LoopLog(ELogLevel::INFO, "Reset: observations ready for next request");
+    // Establish baseline positions but ensure first step after reset has zero reward
+    (void)CollectObservations();
+    m_bFirstStep = true;  // re-arm first-step reward suppression
+    LoopLog(ELogLevel::INFO, "Reset: baseline established (rewards suppressed next step)");
 }
 
 void CZooLoopFunctions::Destroy() {
@@ -233,33 +222,83 @@ void CZooLoopFunctions::Destroy() {
 }
 
 json CZooLoopFunctions::CollectObservations() {
-    json observations;
+    // Unified compact batched schema (compact_v1)
+    json response;
+    response["observations"]["schema"] = "compact_v1";
+    json agents = json::array();
+    json proximity = json::array();
+    json position = json::array();
+    json rewards = json::object();
     for (size_t i = 0; i < m_vecControllers.size(); ++i) {
         std::string agent_id = "robot_" + std::to_string(i);
+        agents.push_back(agent_id);
         json obs = m_vecControllers[i]->GetObservation();
+        if (!obs.contains("proximity")) obs["proximity"] = json::array();
         try {
-            CSpace::TMapPerType& footbots =
-                GetSpace().GetEntitiesByType("foot-bot");
+            CSpace::TMapPerType& footbots = GetSpace().GetEntitiesByType("foot-bot");
             auto it = footbots.begin();
             size_t idx = 0;
             for (; it != footbots.end(); ++it, ++idx) {
                 if (idx == i) {
-                    CFootBotEntity* pcFootBot =
-                        any_cast<CFootBotEntity*>(it->second);
-                    const CVector3& pos = pcFootBot->GetEmbodiedEntity()
-                                              .GetOriginAnchor()
-                                              .Position;
-                    obs["position"] = {pos.GetX(), pos.GetY(), pos.GetZ()};
-                    m_vecLastPositions[i] = pos;
+                    CFootBotEntity* pcFootBot = any_cast<CFootBotEntity*>(it->second);
+                    const CVector3& pos = pcFootBot->GetEmbodiedEntity().GetOriginAnchor().Position;
+                    position.push_back({pos.GetX(), pos.GetY(), pos.GetZ()});
                     break;
                 }
             }
         } catch (const std::exception&) {
+            position.push_back({0.0, 0.0, 0.0});
         }
-        observations[agent_id] = obs;
+        proximity.push_back(obs["proximity"]);
+
+        // Reward computation (FUP-05): distance moved (xy) - 0.5 * max proximity
+        Real reward = 0.0;
+        if (!m_bFirstStep && i < m_vecLastPositions.size()) {
+            // Current position just appended above; retrieve for distance calculation
+            const auto& lastPos = m_vecLastPositions[i];
+            const auto& cur = position.back();
+            if (cur.is_array() && cur.size() >= 2) {
+                Real dx = cur[0].get<double>() - lastPos.GetX();
+                Real dy = cur[1].get<double>() - lastPos.GetY();
+                Real dist = std::sqrt(dx * dx + dy * dy);
+                Real maxProx = 0.0;
+                for (const auto& pval : obs["proximity"]) {
+                    if (pval.is_number())
+                        maxProx = std::max(maxProx, (Real)pval.get<double>());
+                }
+                reward = dist - 0.5 * maxProx;
+            }
+        }
+        rewards[agent_id] = reward;
     }
-    json response;
-    response["observations"] = observations;
+    response["observations"]["agents"] = agents;
+    response["observations"]["proximity"] = proximity;
+    response["observations"]["position"] = position;  // currently unused in Python
+    response["observations"]["rewards"] = rewards;
+    if (Enabled(ELogLevel::DEBUG)) {
+        LoopLog(ELogLevel::DEBUG, std::string("Agents: ") + agents.dump());
+        LoopLog(ELogLevel::DEBUG, std::string("Proximity shape: ") + std::to_string(proximity.size()) + "x" + (proximity.size()>0? std::to_string(proximity[0].size()):"0"));
+        LoopLog(ELogLevel::DEBUG, std::string("Positions: ") + position.dump());
+        LoopLog(ELogLevel::DEBUG, std::string("Rewards: ") + rewards.dump());
+    }
+    // Update last positions AFTER computing rewards
+    for (size_t i = 0; i < m_vecControllers.size() && i < m_vecLastPositions.size(); ++i) {
+        try {
+            CSpace::TMapPerType& footbots = GetSpace().GetEntitiesByType("foot-bot");
+            auto it = footbots.begin();
+            size_t idx = 0;
+            for (; it != footbots.end(); ++it, ++idx) {
+                if (idx == i) {
+                    CFootBotEntity* pcFootBot = any_cast<CFootBotEntity*>(it->second);
+                    m_vecLastPositions[i] = pcFootBot->GetEmbodiedEntity().GetOriginAnchor().Position;
+                    break;
+                }
+            }
+        } catch (const std::exception&) {
+            // ignore
+        }
+    }
+    if (m_bFirstStep) m_bFirstStep = false;  // only clear after producing first observation
     return response;
 }
 

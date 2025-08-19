@@ -38,22 +38,37 @@ Communication between the two processes is implemented using a carefully selecte
 
 ## Multi-Agent Scaling
 
-To control multiple robots simultaneously, the following architecture is used:
+The system adopts a **centralized single-socket design (Option A of FUP-09)** for multi-agent scaling. Instead of one ZeroMQ port per robot, a single REP socket (default: `tcp://*:5555`) serves batched requests containing all agent actions and returns batched observations. This approach was chosen for its lower connection management overhead, simpler recovery semantics, and better scalability under moderate agent counts (<100) typical for early-stage MARL prototyping.
 
-1. **Dedicated Ports:** Each robot controller in ARGoS binds to a unique TCP port (e.g., 5555, 5556, ...).
-2. **XML Configuration:** Ports are assigned to robots in the `.argos` configuration file. Each robot has a separate controller configuration with a unique `id` and `port` parameter.
-3. **Python Client Management:** The Python client manages a list of sockets, each connected to a specific robot’s port. Commands are sent iteratively to all sockets to control the entire fleet.
+Key aspects:
+
+1. **Central REP Socket:** Implemented in `zoo_loop_functions.cpp`; all agent actions are applied in `PreStep()`, and a single response with all observations + rewards is sent in `PostStep()`.
+2. **Agent Indexing:** Agents are deterministically named `robot_0..robot_{N-1}` in discovery order. Python infers the set after the first reset.
+3. **Batch Payloads:** Request JSON: `{ "command": "step", "payload": { "actions": { "robot_0": "forward_speed", ... }}}`. Response JSON contains an `observations` object.
+4. **Unified Observation Schema:** The environment always emits the compact batched envelope:
+   ```json
+   {
+     "observations": {
+       "schema": "compact_v1",
+       "agents": ["robot_0", "robot_1"],
+       "proximity": [[...24 floats...], [...]],
+       "position": [[x,y,z], [...]],
+       "rewards": {"robot_0": 0.0, "robot_1": 0.01}
+     }
+   }
+   ```
+   This minimizes repeated keys and lowers serialization overhead. A developer utility (future work) can pretty‑print this into per‑agent dictionaries for manual debugging without changing the wire protocol.
+5. **Extensibility:** Additional sensors append new parallel arrays (e.g., `light`, `battery`) and increment the schema version only if breaking changes are introduced.
 
 ## Control Flow
 
 The typical control flow for a simulation step is as follows:
 
-1. The ARGoS simulator runs and cyclically calls the `ControlStep()` method for each robot controller.
-2. Within `ControlStep()`, the C++ controller non-blockingly (`zmq::recv_flags::dontwait`) checks for new messages from the Python client to prevent the simulation from freezing.
-3. The Python client sends a JSON object (e.g., `{"left_speed": 10.0, "right_speed": 5.0}`) to the corresponding port.
-4. The C++ controller receives the message, parses the JSON, and sets the robot’s wheel speeds accordingly.
-5. The C++ controller sends a confirmation JSON message (e.g., `{"status": "ok"}`) back to the Python client.
-6. The Python client receives the confirmation and can send the next command.
+1. The ARGoS simulator runs and calls the loop functions `PreStep()` and `PostStep()` each tick.
+2. `PostStep()` collects observations (and computes rewards) and blocks waiting for the next batched request from Python (REQ/REP ensures sync).
+3. The Python `ArgosEnv.step()` sends one JSON request with all agent actions.
+4. `PreStep()` applies the newly received actions to each controller before physics advancement.
+5. The cycle repeats, guaranteeing exactly one simulation tick per Python step, aiding determinism and seed reproducibility.
 
 ## Project Structure
 
@@ -80,11 +95,11 @@ The repository is organized into the following directories:
 │   │   ├── common/
 │   │   │   └── json.hpp    # nlohmann/json library for C++ JSON parsing
 │   │   ├── controllers/
-│   │   │   ├── my_ipc_controller.cpp # Controller logic with ZeroMQ server
+│   │   │   ├── my_ipc_controller.cpp # Per-robot controller (wheel & sensor logic)
 │   │   │   └── my_ipc_controller.h
 │   │   └── loop_functions/ # 
 │   └── zoo/                # Python package for the PettingZoo environment
-│       ├── argos_env.py    # Main PettingZoo environment wrapper
+│       ├── argos_env.py    # PettingZoo parallel env (batched REQ/REP client, compact schema support)
 │       ├── test_env.py     # Script to test the environment
 │       └── zmq_client.py   # ZeroMQ client for connecting to ARGoS
 └── tests/                  # Tests for the Python components

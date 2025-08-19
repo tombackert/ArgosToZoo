@@ -7,7 +7,7 @@
 ## Overview
 
 - 🚀 **Project Goal:** To create a robust bridge for controlling ARGoS agents using an external Python policy, with the ultimate aim of simulating collective behaviors (e.g., collective transport) trained with MARL.
-- 🏎️ **Architecture:** The system is built on a decoupled client–server architecture. Each robot in ARGoS runs a C++ controller that acts as a ZeroMQ server (REP). An external Python script acts as the client (REQ), sending commands and receiving state information. This ensures the high-performance simulation is handled by C++, while flexible decision-making resides in Python.
+- 🏎️ **Architecture:** Decoupled client–server with a *single* ZeroMQ REP socket hosted by the ARGoS loop functions (central server). Python (`ArgosEnv` PettingZoo wrapper) is the single REQ client sending batched actions and receiving batched observations for all robots every simulation tick. High‑performance physics stays in C++; flexible policy logic lives in Python.
 
 ## Tech Stack
 
@@ -18,17 +18,64 @@
 
 ## Concept
 
-Data in ArgosToZoo flows as follows:
+### Current Data / Control Flow (Unified Batched Socket)
 
-1. **ARGoS (Server):** The C++ controller for each agent starts a ZeroMQ REP server on a unique port and waits for commands. To prevent simulation freezing, it checks for messages non-blockingly.
-2. **Python (Client):** The Python script starts ZeroMQ REQ clients, connecting to each agent's port.
-3. **Action Selection:** The Python script (initially manual input, later a MARL policy) decides on an action for each agent.
-4. **Serialization (Python → C++):** Actions (e.g., wheel speeds) are formatted into a JSON string and sent as a request to the corresponding ARGoS agent.
-5. **Execution:** The C++ controller receives the JSON request, parses it, and applies actions to the robot’s actuators.
-6. **Serialization (C++ → Python):** The controller sends a JSON confirmation reply (e.g., `{"status": "ok"}`), which can be extended to include sensor data/observations.
-7. **Loop:** The cycle continues.
+1. **Central Server (ARGoS Loop Functions):** A single REP socket (default `tcp://*:5555`) lives in the loop functions plugin. Each tick it: (a) advances simulation, (b) gathers observations from all controllers, (c) computes rewards, then blocks waiting for the next Python request.
+2. **Python Client (`ArgosEnv`):** Maintains one REQ socket. Each `step()` call sends a JSON payload containing a per‑agent action map.
+3. **Action Application:** Actions received in tick *T* are applied at the start of tick *T+1* (standard synchronous environment semantics).
+4. **Observation + Reward Collection:** After physics + controller updates, the server collects proximity sensor arrays, positions, and calculates shaped rewards.
+5. **Batched Reply:** A single JSON message with a compact schema (see below) is sent back to Python.
+6. **Loop:** Python decodes to per‑agent observations; policies pick the next actions.
+
+This design (FUP‑09 option A) replaces earlier per‑robot socket plans. It minimizes connection management overhead, enables scaling to dozens of robots with constant socket count, and reduces marshaling cost by packing homogeneous arrays.
 
 ![ARGoS-Python Communication Architecture](docs/argos-python-flowchart.png)
+
+### Observation & Reward Schema
+
+The simulator always returns the unified compact schema (`compact_v1`):
+
+```jsonc
+{
+    "observations": {
+        "schema": "compact_v1",
+        "agents": ["robot_0", "robot_1"],
+        "proximity": [
+            [0.0, 0.02, ... 24 values ...],
+            [0.01, 0.00, ...]
+        ],
+        "position": [
+            [x0, y0, z0],
+            [x1, y1, z1]
+        ],
+        "rewards": {
+            "robot_0": 0.0,
+            "robot_1": 0.0
+        }
+    }
+}
+```
+
+Python normalizes this into a per‑agent dict with only the fields exposed in the declared observation space (currently proximity readings). Positions are reserved for future tasks (e.g., navigation shaping, curriculum signals).
+
+**Reward shaping (FUP‑05):**
+
+```
+reward_i = distance_xy_moved_since_last_step_i - 0.5 * max_proximity_reading_i
+```
+
+The first post‑reset step produces 0.0 for all agents (baseline). This shaping encourages exploration while discouraging close proximity (e.g., collisions / crowding) reflected by high proximity sensor values.
+
+### Rationale for Compact Batched Format
+
+| Concern | Prior (per‑agent JSON objects) | Now (compact arrays) |
+|---------|--------------------------------|----------------------|
+| Message overhead | Repeated keys per agent | Single header, dense arrays |
+| Socket management | One socket per robot | Single socket |
+| Latency scaling | O(N) round‑trips | O(1) per tick |
+| Schema evolution | Hard (need cross‑agent consistency) | Centralized version gating (`schema`) |
+
+Future extensions (e.g., adding battery, IMU, task-specific signals) append new parallel arrays without breaking existing consumers that key off `schema`.
 
 ## How to Run
 
@@ -62,10 +109,21 @@ make                      # Compile the C++ controller plugin
 ```
 The compiled library `libmy_ipc_controller.dylib` will be in `build/controllers/`.
 
-### 3. Run the test env
+### 3. Quick Interactive Check (PettingZoo Wrapper)
 
-```
-PYTHONPATH=src ARGOS_LOOP_LOG_LEVEL=DEBUG ARGOS_CONTROLLER_LOG_LEVEL=ERROR python tests/test_env.py
+Python smoke interaction after build:
+
+```bash
+PYTHONPATH=src python - <<'PY'
+from zoo.argos_env import ArgosEnv
+env = ArgosEnv("experiments/footbot_5.argos", loop_log_level="WARN", controller_log_level="ERROR")
+obs, info = env.reset(seed=0)
+for _ in range(3):
+    actions = {a:0 for a in env.agents}  # all 'stop'
+    obs, rew, term, trunc, info = env.step(actions)
+    print({a: float(rew[a]) for a in rew})
+env.close()
+PY
 ```
 
 ## Testing
@@ -75,7 +133,7 @@ The automated test suite (FUP-11) validates:
 | Area | Purpose |
 |------|---------|
 | API compliance | PettingZoo parallel API structure & lifecycle |
-| Reward variance | Ensures non-constant shaping signal |
+| Reward variance | Ensures non-constant shaping signal (compact schema rewards field) |
 | Seeding | Deterministic restart & simulator re-seed logic |
 | Timeout recovery | Socket resilience (ZeroMQ reconnection) |
 | Graceful shutdown | Idempotent `close()` & process cleanup |
@@ -95,7 +153,7 @@ PettingZoo API smoke check (manual):
 python -m pettingzoo.test.parallel_api_test zoo.argos_env:ArgosEnv
 ```
 
-Style-only lint:
+Style-only lint (Python sources only):
 ```bash
 flake8 src/zoo
 ```

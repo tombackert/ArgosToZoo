@@ -6,13 +6,16 @@ Converted to be executable by pytest while still runnable as a script.
 from zoo.argos_env import ArgosEnv
 import pytest
 import time
+import os
 from typing import Dict
 
 
 EXPERIMENT = "experiments/footbot_5.argos"
 
 
-def run_demo(max_steps: int = 100, controller_level: str = "INFO", loop_level: str = "INFO"):
+def run_demo(
+    max_steps: int = 100, controller_level: str = "DEBUG", loop_level: str = "DEBUG"
+):
     """Run a short interaction loop for manual inspection.
 
     Matches the following pattern logic: first 5 steps use ACTION_PATTERN_A, next 5 steps ACTION_PATTERN_B
@@ -52,7 +55,7 @@ def run_demo(max_steps: int = 100, controller_level: str = "INFO", loop_level: s
         env.reset(options={"max_steps": 3})
         env.logger.info(f"Agents after reset: {env.agents}")
     finally:
-        #env.close()
+        # env.close()
         try:
             env.logger.info("Demo finished.")
         except Exception:
@@ -92,4 +95,7 @@ def test_env_smoke():
 
 
 if __name__ == "__main__":  # pragma: no cover
-    run_demo(max_steps=100, controller_level="DEBUG", loop_level="DEBUG")
+    # Respect environment variables if provided; fall back to DEBUG for interactive run
+    ctrl_lvl = os.environ.get("ARGOS_CONTROLLER_LOG_LEVEL", "DEBUG")
+    loop_lvl = os.environ.get("ARGOS_LOOP_LOG_LEVEL", "DEBUG")
+    run_demo(max_steps=100, controller_level=ctrl_lvl, loop_level=loop_lvl)

@@ -68,13 +68,15 @@ class ArgosEnv(ParallelEnv):
         self._shutting_down = False
 
         # Agent discovery state
-        self.possible_agents = []
-        self.agent_name_mapping = {}
+        self.possible_agents: list[str] = []
+        self.agent_name_mapping: dict[str, int] = {}
         self._agents_initialized = False
 
         # Desired C++ log levels (propagated to subprocess env)
         self._controller_log_level = controller_log_level
         self._loop_log_level = loop_log_level
+        # Optional compact batched observation schema (FUP-09 optimization)
+        # Unified compact observation schema always enabled (FUP-09 consolidation)
 
         # Simulator startup
         self._startup_delay = startup_delay
@@ -83,7 +85,11 @@ class ArgosEnv(ParallelEnv):
 
         # Action mapping (discrete -> controller command)
         self._action_index_to_name = [
-            "stop", "forward", "backward", "turn_left", "turn_right"
+            "stop",
+            "forward",
+            "backward",
+            "turn_left",
+            "turn_right",
         ]
         self._action_name_to_command = {
             "stop": "stop",
@@ -94,15 +100,17 @@ class ArgosEnv(ParallelEnv):
         }
 
     def _log_stream(self, stream, prefix):
-        for line in iter(stream.readline, ''):
+        for line in iter(stream.readline, ""):
             print(f"[{prefix}] {line.strip()}", flush=True)
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
         # 24 proximity sensor values
-        return Dict({
-            "proximity": Box(low=0, high=1, shape=(24,), dtype=np.float32),
-        })
+        return Dict(
+            {
+                "proximity": Box(low=0, high=1, shape=(24,), dtype=np.float32),
+            }
+        )
 
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent):
@@ -126,7 +134,12 @@ class ArgosEnv(ParallelEnv):
         obs_block = reply.get("observations", {})
 
         if not self._agents_initialized:
-            discovered = sorted(list(obs_block.keys()))
+            # Unified compact schema: agent ids stored in 'agents' array
+            if isinstance(obs_block, dict) and obs_block.get("schema") == "compact_v1":
+                discovered = list(obs_block.get("agents", []))
+            else:
+                # Fallback (legacy structure)
+                discovered = sorted(list(obs_block.keys()))
             if not discovered:
                 raise RuntimeError("No agents found in returned observations.")
             if (
@@ -159,34 +172,30 @@ class ArgosEnv(ParallelEnv):
             return {}, {}, {}, {}, {}
 
         # Serialize and validate actions
-        serialized = {}
+        serialized: dict[str, str] = {}
         for agent, act in actions.items():
             if agent not in self.agents:
                 raise KeyError(f"Unknown agent '{agent}' in actions.")
             serialized[agent] = self._convert_action(act)
 
-        # Sync: C++ blocks until this request; obs are post tick.
-        # provided actions will be applied to the NEXT tick.
-        payload = {"actions": serialized}
-        reply = self.client.send_command("step", payload=payload)
+        # Sync request (actions applied next tick, observations are post-step)
+        reply = self.client.send_command("step", payload={"actions": serialized})
         obs_block = reply.get("observations", {})
         observations = self._decode_observations(obs_block)
 
-        # Rewards: if server sends 'rewards' block, use it, else default 0.0
-        # Reward heuristic (FUP-05) lives in C++ loop:
-        #   reward = distance_moved_xy_since_last_step - 0.5 * max_proximity_reading
-        #   (First step after reset => 0.0 baseline). See C++ comment for rationale.
-        raw_rewards = (
-            reply.get("rewards", None)
-            or reply.get("observations", {}).get("rewards", {})
-        )
-        rewards = {}
-        for agent in self.agents:
-            rewards[agent] = (
-                float(raw_rewards.get(agent, 0.0))
-                if isinstance(raw_rewards, dict)
-                else 0.0
-            )
+        # Rewards (provided inside observations.rewards)
+        raw_rewards = reply.get("observations", {}).get("rewards", {})
+        rewards: dict[str, float] = {}
+        if isinstance(raw_rewards, dict):
+            for agent in self.agents:
+                val = raw_rewards.get(agent, 0.0)
+                try:
+                    rewards[agent] = float(val)
+                except Exception:
+                    rewards[agent] = 0.0
+        else:
+            rewards = {agent: 0.0 for agent in self.agents}
+
         terminations = {agent: False for agent in self.agents}
         truncations = {agent: False for agent in self.agents}
         infos = {agent: {} for agent in self.agents}
@@ -201,6 +210,35 @@ class ArgosEnv(ParallelEnv):
         return observations, rewards, terminations, truncations, infos
 
     def _decode_observations(self, obs_dict):
+        """Decode observations coming from the C++ side.
+
+            Supports two wire formats:
+            1. Legacy (default): {agent_id: {"proximity": [...], "position": [...]}, ...}
+        2. Unified compact schema (always used):
+               {
+                 "schema": "compact_v1",
+                 "agents": ["robot_0", ...],
+                 "proximity": [[...24...], ...],
+                 "position": [[x,y,z], ...]
+               }
+            Both forms are converted into a uniform per-agent dict only including
+            the "proximity" key (position currently unused in Python wrapper but
+            retained for future reward shaping / observations extensions).
+        """
+        # Compact schema envelope (always expected)
+        if isinstance(obs_dict, dict) and obs_dict.get("schema") == "compact_v1":
+            agents = obs_dict.get("agents", [])
+            proximities = obs_dict.get("proximity", [])
+            # positions = obs_dict.get("position", [])  # presently unused
+            rebuilt: dict[str, dict] = {}
+            for idx, agent in enumerate(agents):
+                prox_raw = np.array(
+                    proximities[idx] if idx < len(proximities) else [],
+                    dtype=np.float32,
+                )
+                rebuilt[agent] = {"proximity": prox_raw}
+            obs_dict = rebuilt  # normalized legacy-like dict
+
         decoded = {}
         for agent, obs in obs_dict.items():
             prox_raw = np.array(obs.get("proximity", []), dtype=np.float32)
@@ -208,12 +246,13 @@ class ArgosEnv(ParallelEnv):
             if prox_raw.shape != (24,):
                 # Length differs: pad/truncate and flag (later: logging)
                 self.logger.warn(
-                    "Proximity length mismatch; auto-adjust", length=int(prox_raw.size))
+                    "Proximity length mismatch; auto-adjust", length=int(prox_raw.size)
+                )
                 if prox_raw.size < 24:
                     prox_raw = np.pad(
                         prox_raw,
                         (0, 24 - prox_raw.size),
-                        mode='constant',
+                        mode="constant",
                         constant_values=0.0,
                     )
                 else:
@@ -235,15 +274,11 @@ class ArgosEnv(ParallelEnv):
             space = self.observation_space(agent)
             assert "proximity" in obs, "Missing 'proximity' key in observation"
             prox = obs["proximity"]
-            assert prox.shape == (24,), (
-                f"Proximity shape mismatch: {prox.shape}"
-            )
-            assert (
-                (prox >= 0).all() and (prox <= 1).all()
-            ), "Proximity values not in [0,1]"
-            assert space.contains(obs), (
-                "Observation not contained in declared space"
-            )
+            assert prox.shape == (24,), f"Proximity shape mismatch: {prox.shape}"
+            assert (prox >= 0).all() and (
+                prox <= 1
+            ).all(), "Proximity values not in [0,1]"
+            assert space.contains(obs), "Observation not contained in declared space"
         return True
 
     def close(self):
@@ -292,9 +327,13 @@ class ArgosEnv(ParallelEnv):
             env["ARGOS_CONTROLLER_LOG_LEVEL"] = self._controller_log_level
         if self._loop_log_level:
             env["ARGOS_LOOP_LOG_LEVEL"] = self._loop_log_level
+        # No feature flag needed: compact schema is standard
         self.sim_process = subprocess.Popen(
-            ['argos3', '-c', self._active_config_path],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env
+            ["argos3", "-c", self._active_config_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
         )
         # Spawn and track log threads so we can join them on close
         out_thread = threading.Thread(
@@ -317,10 +356,10 @@ class ArgosEnv(ParallelEnv):
 
     def _shutdown_simulator(self):
         # Prevent re-entrancy issues if already closed
-        if hasattr(self, '_shutting_down') and self._shutting_down:
+        if hasattr(self, "_shutting_down") and self._shutting_down:
             return
         self._shutting_down = True
-        if hasattr(self, 'client') and self.client:
+        if hasattr(self, "client") and self.client:
             try:
                 self.client.send_command("close")
             except Exception:
@@ -330,7 +369,7 @@ class ArgosEnv(ParallelEnv):
             except Exception:
                 pass
             self.client = None
-        if hasattr(self, 'sim_process') and self.sim_process:
+        if hasattr(self, "sim_process") and self.sim_process:
             if self.sim_process.poll() is None:
                 self.sim_process.terminate()
                 try:
@@ -364,20 +403,22 @@ class ArgosEnv(ParallelEnv):
             tree = ET.parse(self.argos_file_path)
             root = tree.getroot()
             # Find <experiment> node anywhere
-            exp_node = root.find('.//experiment')
+            exp_node = root.find(".//experiment")
             if exp_node is None:
                 self.logger.warn("No <experiment> node; cannot set random_seed")
             else:
-                exp_node.set('random_seed', str(self._current_seed))
+                exp_node.set("random_seed", str(self._current_seed))
             # Write to temp file
             fd, tmp_path = tempfile.mkstemp(
-                prefix=f"argos_seed_{self._current_seed}_", suffix='.argos'
+                prefix=f"argos_seed_{self._current_seed}_", suffix=".argos"
             )
             os.close(fd)
             tree.write(tmp_path)
             self._active_config_path = tmp_path
         except Exception as e:
-            self.logger.warn("Failed to create seeded config; using original", error=str(e))
+            self.logger.warn(
+                "Failed to create seeded config; using original", error=str(e)
+            )
             self._active_config_path = self.argos_file_path
         # Restart simulator
         self._shutdown_simulator()
