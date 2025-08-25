@@ -1,4 +1,4 @@
-[Home](../README.md) | [Concept](concept.md) | [Architecture](architecture.md) | [How to Run](how-to-run.md)
+[Home](../README.md) | [Concept](concept.md) | [Architecture](architecture.md) | [How to Run](how-to-run.md) | [Tests](tests.md) | [Logging](logging.md) | [Project Management](project-management.md) | [Resources](resources.md)
 
 # Architecture: ARGoS-PettingZoo Bridge
 
@@ -250,3 +250,23 @@ Interpretation:
 * Because observations are unused, this test isolates communication + reward plumbing correctness from representation learning concerns.
 
 Extending the smoke test to observe-driven policies (future): replace stateless preferences with a linear layer over normalized proximity readings (concatenate across agents or per-agent independent policies) and include simple entropy regularization.
+
+### Performance
+
+Preliminary single-process benchmarks (MacBook Pro M1, experiment running on 20Hz):
+
++--------+-------+---------+--------+--------+--------+------------+
+| agents | steps | mean_ms | p95_ms | min_ms | max_ms | payload_kb |
++--------+-------+---------+--------+--------+--------+------------+
+|      5 |   100 |   49.99 |  50.90 |  48.24 |  51.78 |       0.47 |
+|     10 |   100 |   49.98 |  51.00 |  47.99 |  51.22 |       0.94 |
+|     20 |   100 |   49.99 |  50.80 |  48.64 |  51.64 |       1.88 |
++--------+-------+---------+--------+--------+--------+------------+
+
+- agents: Number of simulated robots (Foot-Bots) in the experiment.  
+- steps: Number of measured simulation steps (excluding warmup).  
+- mean_ms: Average duration of an `env.step()` call in milliseconds (ms) – corresponds to the mean simulation latency per tick.  
+- p95_ms: 95th percentile of step latency (ms) – 95% of all steps are faster than this value (shows outliers).  
+- min_ms: Shortest measured step latency (ms).  
+- max_ms: Longest measured step latency (ms).  
+- payload_kb: Average size of the transmitted sensor data per tick (in kilobytes, proximity arrays only, JSON-serialized).
