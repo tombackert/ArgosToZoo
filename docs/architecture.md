@@ -255,6 +255,7 @@ Extending the smoke test to observe-driven policies (future): replace stateless 
 
 Preliminary single-process benchmarks (MacBook Pro M1, experiment running on 20Hz):
 
+```zsh
 +--------+-------+---------+--------+--------+--------+------------+
 | agents | steps | mean_ms | p95_ms | min_ms | max_ms | payload_kb |
 +--------+-------+---------+--------+--------+--------+------------+
@@ -262,6 +263,7 @@ Preliminary single-process benchmarks (MacBook Pro M1, experiment running on 20H
 |     10 |   100 |   49.98 |  51.00 |  47.99 |  51.22 |       0.94 |
 |     20 |   100 |   49.99 |  50.80 |  48.64 |  51.64 |       1.88 |
 +--------+-------+---------+--------+--------+--------+------------+
+```
 
 - agents: Number of simulated robots (Foot-Bots) in the experiment.  
 - steps: Number of measured simulation steps (excluding warmup).  
