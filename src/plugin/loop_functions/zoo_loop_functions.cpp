@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <random>
 
 // ---------------- Logging helpers -----------------
 CZooLoopFunctions::ELogLevel CZooLoopFunctions::EnvDefaultLogLevel() {
@@ -82,6 +83,10 @@ void CZooLoopFunctions::Init(TConfigurationNode& t_node) {
                                  std::to_string(m_vecControllers.size()));
     m_vecLastPositions.resize(m_vecControllers.size(), CVector3());
     m_bFirstStep = true;
+
+    // Perform randomized placement once at startup (deterministic via ARGoS
+    // seed)
+    RandomizeStartPositions();
 }
 
 void CZooLoopFunctions::PreStep() {
@@ -203,6 +208,9 @@ void CZooLoopFunctions::PostStep() {
 void CZooLoopFunctions::Reset() {
     for (CMyIPCController* pcController : m_vecControllers)
         pcController->Reset();
+    // Re-randomize positions deterministically using current RNG state
+    m_bPositionsRandomized = false;  // allow randomization again
+    RandomizeStartPositions();
     // Establish baseline positions but ensure first step after reset has zero
     // reward
     (void)CollectObservations();
@@ -355,3 +363,80 @@ json CZooLoopFunctions::ReceiveRequest() {
 }
 
 REGISTER_LOOP_FUNCTIONS(CZooLoopFunctions, "zoo_loop_functions");
+
+/* ------------------------------------------------------------ */
+/* Randomized placement logic                                    */
+/* ------------------------------------------------------------ */
+void CZooLoopFunctions::RandomizeStartPositions() {
+    if (m_bPositionsRandomized) return;
+    // Access global RNG from simulator for deterministic reproducibility
+    CRandom::CRNG* pcRNG = CRandom::CreateRNG("argos");
+    if (!pcRNG) {
+        LoopLog(ELogLevel::WARN,
+                "RandomizeStartPositions: RNG not available; skipping");
+        return;
+    }
+    // Fetch all foot-bot entities
+    CSpace::TMapPerType& cFootbots = GetSpace().GetEntitiesByType("foot-bot");
+    const size_t unN = cFootbots.size();
+    if (unN == 0) return;
+    // Arena bounds (assume centered box): query Space size
+    const CVector3& cArenaSize = GetSpace().GetArenaSize();
+    // We'll sample x in [-sx/2+margin, sx/2-margin], y similarly
+    const Real margin = 0.3f;  // Avoid spawning partly outside
+    const Real minX = -cArenaSize.GetX() / 2 + margin;
+    const Real maxX = cArenaSize.GetX() / 2 - margin;
+    const Real minY = -cArenaSize.GetY() / 2 + margin;
+    const Real maxY = cArenaSize.GetY() / 2 - margin;
+    std::vector<CVector3> vecChosen;
+    vecChosen.reserve(unN);
+    const size_t maxTrialsPerRobot = 500;  // fail-safe
+    for (size_t i = 0; i < unN; ++i) {
+        bool placed = false;
+        for (size_t trial = 0; trial < maxTrialsPerRobot; ++trial) {
+            Real rx = pcRNG->Uniform(CRange<Real>(minX, maxX));
+            Real ry = pcRNG->Uniform(CRange<Real>(minY, maxY));
+            CVector3 cand(rx, ry, 0);
+            bool ok = true;
+            for (const auto& prev : vecChosen) {
+                if ((cand - prev).Length() < m_fMinSeparation) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) {
+                vecChosen.push_back(cand);
+                placed = true;
+                break;
+            }
+        }
+        if (!placed) {
+            LoopLog(ELogLevel::WARN,
+                    "RandomizeStartPositions: could not place all robots with "
+                    "min separation; proceeding partially");
+            break;  // proceed with what we have; remaining keep original
+                    // positions
+        }
+    }
+    // Apply positions (and random orientations) to first vecChosen.size()
+    // robots
+    size_t idx = 0;
+    for (auto it = cFootbots.begin();
+         it != cFootbots.end() && idx < vecChosen.size(); ++it, ++idx) {
+        CFootBotEntity* pcFB = any_cast<CFootBotEntity*>(it->second);
+        CEmbodiedEntity& body = pcFB->GetEmbodiedEntity();
+        const CVector3& pos = vecChosen[idx];
+        // Random yaw in [-pi, pi]
+        CRadians yaw =
+            pcRNG->Uniform(CRange<CRadians>(-CRadians::PI, CRadians::PI));
+        CQuaternion qOrient;
+        qOrient.FromEulerAngles(CRadians(0), CRadians(0),
+                                yaw);  // roll, pitch, yaw
+        body.MoveTo(pos, qOrient, false);
+    }
+    m_bPositionsRandomized = true;
+    LoopLog(ELogLevel::INFO,
+            std::string("RandomizeStartPositions: placed ") +
+                std::to_string(vecChosen.size()) +
+                " robots (min_sep=" + std::to_string(m_fMinSeparation) + ")");
+}

@@ -54,22 +54,25 @@ class ArgosEnv(ParallelEnv):
         self.logger = get_logger(effective_level, log_format)
 
         # Core config
-        self.argos_file_path = argos_file
+        self.argos_file_path = os.path.abspath(argos_file)
         self._active_config_path = argos_file
         self._expected_num_agents = expected_num_agents
         self._max_steps = int(max_steps)
         self.timestep = 0
-        self._current_seed: Optional[int] = None
+        self._current_seed = None  # type: Optional[int]
         self.np_random = None
         self._client_timeout_ms = client_timeout_ms
         self._closed = False  # Graceful shutdown state flag
-        self._log_threads: list[threading.Thread] = []
-        self._last_return_code: Optional[int] = None
+        self._log_threads = []  # list[threading.Thread]
+        self._last_return_code = None  # type: Optional[int]
         self._shutting_down = False
+        self._last_positions = (
+            None  # positions from latest raw reply (list[list[float]])
+        )
 
         # Agent discovery state
-        self.possible_agents: list[str] = []
-        self.agent_name_mapping: dict[str, int] = {}
+        self.possible_agents = []  # list[str]
+        self.agent_name_mapping = {}  # dict[str,int]
         self._agents_initialized = False
 
         # Desired C++ log levels (propagated to subprocess env)
@@ -123,15 +126,17 @@ class ArgosEnv(ParallelEnv):
         if options and "max_steps" in options:
             self._max_steps = int(options["max_steps"])
 
-        # Seeding: restart underlying simulator if a new seed is provided
-        if seed is not None and seed != self._current_seed:
+        # Seeding: ALWAYS restart underlying simulator if a seed is provided
+        # This guarantees deterministic reproduction of initial layouts
+        # across repeated resets with the same seed.
+        if seed is not None:
             self._apply_seed_and_restart(seed)
-        elif seed is not None:
-            # Same seed: still set np_random for downstream reproducibility
-            self.np_random = np.random.default_rng(seed)
 
         reply = self.client.send_command("reset")
         obs_block = reply.get("observations", {})
+        # Capture positions (compact schema) for reproducibility inspection
+        if isinstance(obs_block, dict) and obs_block.get("schema") == "compact_v1":
+            self._last_positions = obs_block.get("position", [])
 
         if not self._agents_initialized:
             # Unified compact schema: agent ids stored in 'agents' array
@@ -181,6 +186,8 @@ class ArgosEnv(ParallelEnv):
         # Sync request (actions applied next tick, observations are post-step)
         reply = self.client.send_command("step", payload={"actions": serialized})
         obs_block = reply.get("observations", {})
+        if isinstance(obs_block, dict) and obs_block.get("schema") == "compact_v1":
+            self._last_positions = obs_block.get("position", [])
         observations = self._decode_observations(obs_block)
 
         # Rewards (provided inside observations.rewards)
@@ -296,6 +303,14 @@ class ArgosEnv(ParallelEnv):
             if t.is_alive():
                 t.join(timeout=0.5)
         self._closed = True
+
+    # ------------------ inspection helpers ------------------
+    def get_last_positions(self):
+        """Return last recorded raw positions array (list of [x,y,z]) or None.
+
+        Useful for verifying deterministic placement across seeded resets.
+        """
+        return self._last_positions
 
     # ------------------ internal helpers ------------------
     def _convert_action(self, act):
