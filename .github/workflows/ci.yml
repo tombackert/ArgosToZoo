@@ -35,19 +35,56 @@ jobs:
     name: Full Integration (PR/Main)
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: macos-latest
+    env:
+      PYTHON_VERSION: '3.12'
+      HOMEBREW_NO_AUTO_UPDATE: 1   # speed & determinism (we explicitly update if we want)
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install Homebrew deps (C++ & tools)
+      - name: Show runner & preinstalled tools (debug)
         run: |
-          brew update
-          brew install pkg-config cmake libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen zeromq cppzmq clang-format
+          sw_vers || true
+          uname -a
+          echo "Preinstalled cmake: $(command -v cmake || echo 'missing')"
+          (cmake --version 2>/dev/null | head -1) || true
+          brew --version
+          echo "Existing brew formula count: $(brew list --formula | wc -l | tr -d ' ')"
+
+      - name: Install Homebrew deps (idempotent)
+        run: |
+          set -euo pipefail
+          echo "Updating brew metadata (shallow)"
+          brew update --quiet
+
+          # Avoid cmake tap conflict by only installing if missing
+            if command -v cmake >/dev/null 2>&1; then
+              echo "cmake already present ($(cmake --version | head -1)) -> skip install"
+            else
+              echo "cmake missing -> installing"
+              brew install cmake
+            fi
+
+          FORMULAE="pkg-config libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen zeromq cppzmq clang-format"
+          for f in $FORMULAE; do
+            if brew list --versions "$f" >/dev/null 2>&1; then
+              echo "[brew] $f already installed"
+            else
+              echo "[brew] Installing $f"
+              brew install "$f"
+            fi
+          done
+
+          echo "Brew deps done. Summary of selected versions:" 
+          for b in cmake zeromq lua graphviz doxygen; do
+            brew info --json=v2 $b | jq -r '.formulae[0] | "'"$b"'" + ": " + .installed[0].version' || true
+          done
 
       - name: Clone ARGoS source
         run: |
@@ -76,6 +113,14 @@ jobs:
           sudo make install
           which argos3 || (echo "argos3 not on PATH after install" && exit 1)
           argos3 -q version || echo "Version query failed (check install)"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install Python deps
         run: |
