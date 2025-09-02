@@ -67,6 +67,11 @@ public:
     virtual void Destroy();
 
 private:
+    /* Randomize starting positions/orientations with min separation */
+    void RandomizeStartPositions();
+    Real m_fMinSeparation = 0.2f;         // meters (center-to-center)
+    bool m_bPositionsRandomized = false;  // guard to avoid double-randomization
+                                          // within same Init/Reset frame
     /* Logging helpers */
     void LoopLog(ELogLevel lvl, const std::string& msg) const;
     bool Enabled(ELogLevel lvl) const {

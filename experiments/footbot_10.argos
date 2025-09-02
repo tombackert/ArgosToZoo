@@ -1,8 +1,9 @@
 <?xml version="1.0" ?>
 <argos-configuration>
+  <!-- Headless 10-footbot scenario (randomized at runtime by loop functions) -->
   <framework>
     <system threads="0" />
-  <experiment length="0" ticks_per_second="20" random_seed="123" />
+    <experiment length="0" ticks_per_second="20" random_seed="123" />
   </framework>
   <controllers>
     <my_ipc_controller id="ipc" library="build/src/plugin/controllers/libmy_ipc_controller.dylib">
@@ -19,7 +20,7 @@
     <params zmq_port="5555" />
   </loop_functions>
   <arena size="6,6,1" center="0,0,0.5">
-    <!-- Ten foot-bots referencing same controller config (shared library instance) -->
+    <!-- Placeholder grid; actual positions & orientations randomized with min separation in loop functions -->
     <foot-bot id="fb_0"><body position="-2,-2,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
     <foot-bot id="fb_1"><body position="-2,-1,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
     <foot-bot id="fb_2"><body position="-2,0,0" orientation="0,0,0" /><controller config="ipc" /></foot-bot>
@@ -35,7 +36,5 @@
     <dynamics2d id="dyn2d" />
   </physics_engines>
   <media />
-  <visualization>
-    <qt-opengl autoplay="true" />
-  </visualization>
+  <!-- No <visualization> block => headless mode (faster) -->
 </argos-configuration>

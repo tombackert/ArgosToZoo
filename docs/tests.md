@@ -82,10 +82,29 @@ pytest -q
 
 ### Linting
 
-`flake8` enforces Python style; C++ formatting via `clang-format` (fail if diff). Run locally before committing:
+`flake8` enforces Python style; C++ formatting via `clang-format` (fail if diff). 
+
+#### C++
+Run for lint-checking one file:
+```
+clang-format -n --Werror src/plugin/loop_functions/zoo_loop_functions.cpp
+```
+
+Run for auto-fix one file:
+```
+clang-format -i src/plugin/loop_functions/zoo_loop_functions.cpp
+```
+
+#### Python
+```
+flake8 src/zoo/argos_env.py
+```
+
+#### Pre Commit 
+Run locally before committing:
 ```bash
 flake8 src/zoo
-clang-format -i $(git ls-files 'src/plugin/**/*.[ch]pp' 'src/plugin/**/*.[ch]')
+clang-format -i $(git ls-files 'src/plugin/loop_functions/*.[ch]pp' 'src/plugin/loop_functions/*.[ch]' 'src/plugin/controllers/*.[ch]pp' 'src/plugin/controllers/*.[ch]')
 ```
 
 ## Adding New Tests
