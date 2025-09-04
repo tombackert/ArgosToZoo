@@ -20,7 +20,7 @@ Limitations:
 
 Example:
     PYTHONPATH=src python scripts/rl_smoke.py \
-        --argos experiments/footbot_5.argos --episodes 20 --steps 50 \
+    --argos experiments/footbot_10.argos --episodes 20 --steps 50 \
         --seed 123 --csv rl_smoke.csv --gamma 0.95 --lr 0.2
 
 After run inspect rl_smoke.csv or watch stdout for rising forward prob / reward.

@@ -85,7 +85,7 @@ The repository is organized into the following directories:
 │   └── how-to-run.md       # Detailed setup and execution guide
 ├── experiments/            # ARGoS configuration files (.argos) for different scenarios
 │   ├── footbot_1.argos     # Scenario with one robot
-│   └── footbot_5.argos     # Scenario with five robots
+│   └── footbot_10.argos    # Headless aggregation scenario with ten robots
 ├── requirements.txt        # Python dependencies
 ├── scripts/                # Standalone Python scripts for control and interaction
 │   └── manual_control.py   # Script for manually controlling robots via the terminal
@@ -205,7 +205,7 @@ Chosen approach: single REP socket (central batching). Benefits: constant descri
 Run a self‑contained random policy driver (no learning) for quick sanity checks:
 
 ```bash
-PYTHONPATH=src python scripts/random_policy.py --argos experiments/footbot_5.argos --episodes 2 --steps 50 --seed 42
+PYTHONPATH=src python scripts/random_policy.py --argos experiments/footbot_10.argos --episodes 2 --steps 50 --seed 42
 ```
 
 It will:
@@ -240,7 +240,7 @@ To verify the bridge supports a basic learning signal without external RL framew
 
 Example run:
 ```bash
-PYTHONPATH=src python scripts/rl_smoke.py --argos experiments/footbot_5.argos \
+PYTHONPATH=src python scripts/rl_smoke.py --argos experiments/footbot_10.argos \
   --episodes 20 --steps 50 --seed 123 --gamma 0.95 --lr 0.2 --csv rl_smoke.csv
 ```
 

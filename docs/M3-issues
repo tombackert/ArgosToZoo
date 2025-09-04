@@ -1,0 +1,275 @@
+# M3 Issues
+
+## M3-01 — Arena & Reset Randomization for 10 Foot-Bots
+
+**Description**
+Create a headless ARGoS scenario for **10 agents** with reproducible reset randomization (positions/orientations, min inter-robot spacing). Keep 20 Hz tick. Provide a single `.argos` config ready for training and a helper to parameterize seeds.
+
+**Priority**: P0 (Critical)
+**Dependencies**: None
+**Estimated Effort**: 6–8h
+
+**Scope / Tasks**
+
+* [ ] Add `experiments/footbot_10.argos` (headless; no Qt viewer).
+* [ ] Randomize start poses with a minimum separation (e.g., ≥0.2 m).
+* [ ] Ensure deterministic seeding via Python wrapper.
+* [ ] Add CLI seed override in Python (e.g., `--seed`).
+* [ ] Document scenario parameters in README.
+
+**Acceptance Criteria**
+
+* [ ] Running ARGoS with the file spawns **10 robots** without overlaps.
+* [ ] Repeated runs with the same seed produce identical initial layouts.
+* [ ] Headless mode runs at \~20 Hz on a dev Mac (±10%).
+* [ ] README section explains how to run and how seeding works.
+
+**Out of Scope**
+
+* Reward shaping, PPO integration.
+
+---
+
+## M3-02 — Loop-Side Metrics & Aggregation Reward
+
+**Description**
+Implement loop-side metrics (centroid, mean cohesion radius, polarization) and the **Aggregation reward** with Δ-cohesion, collision penalty via proximity, and small motion bonus. Expose metrics in the unified batched reply (under `info/metrics`).
+
+> Architecture Clarification (2025-09-04): Implementation decision: all MARL task logic (metrics, reward shaping, success checks) now lives **exclusively in Python** (`ArgosEnv._compute_metrics`). The C++ ARGoS plugin must remain task‑agnostic (simulation, sensing, transport only). Any previous or legacy per‑agent reward computation in C++ is slated for removal (see follow‑up issue M3-02-FUP). References to "loop-side" here should be interpreted as "Python environment side" going forward.
+
+**Priority**: P0 (Critical)
+**Dependencies**: M3-01
+**Estimated Effort**: 6–8h
+
+**Scope / Tasks**
+
+* [ ] Compute centroid and per-step cohesion: mean distance to centroid.
+* [ ] (Optional) Compute polarization P from headings/speeds.
+* [ ] Implement reward: `r = w_coh*Δcohesion − w_col*max_prox + w_move*dist_moved`.
+* [ ] Add episode success check: cohesion < `R_thr` for `T_hold` steps.
+* [ ] Serialize metrics and success flag in reply (not in observations).
+* [ ] Unit tests for metric math (small fixtures).
+
+**Acceptance Criteria**
+
+* [ ] Metrics appear in `info["metrics"]` (names documented).
+* [ ] Reward values change with agent motion and proximity (non-constant).
+* [ ] Episode success computed consistently with documented thresholds.
+* [ ] Tests pass; CI green.
+
+**Out of Scope**
+
+* Logging/plots; PPO training.
+
+---
+
+### M3-02-FUP — Remove Legacy C++ Reward Logic & Enforce Python Ownership
+
+**Description**
+Clean up residual C++ reward shaping (old distance − 0.5*max_proximity) and any serialization fields no longer consumed. Codify the architectural rule: ARGoS C++ layer provides only sensor/position data & basic lifecycle; all MARL / task logic resides in Python. Update docs & code comments accordingly, and add a guard to prevent accidental reintroduction of task-specific reward code into the loop functions.
+
+**Priority**: P0 (Post-M3-02 hygiene)
+**Dependencies**: M3-02 merged
+**Estimated Effort**: 1–2h
+
+**Scope / Tasks**
+
+* [ ] Remove obsolete reward computation from `zoo_loop_functions.cpp/.h` (distance / proximity shaping).
+* [ ] Strip any unused JSON fields related to per-agent rewards from the C++ reply.
+* [ ] Add a concise comment header in loop functions: "Do not implement task / reward logic here; keep simulator generic".
+* [ ] Add a lightweight unit/integration check (Python) asserting C++ reply does not contain a `rewards` field (or, if present, it's empty) — fail loudly if reintroduced.
+* [ ] Update `README.md` wording: replace any remaining "loop-side" phrasing with "Python-side" where it might cause confusion.
+* [ ] Update this `M3-issues` document (done) referencing M3-02-FUP.
+
+**Acceptance Criteria**
+
+* [ ] C++ loop functions contain no task-specific reward calculations.
+* [ ] Python env still produces identical metrics & rewards (no regression in existing tests).
+* [ ] New guard test passes and fails if a mock `rewards` key is injected from C++.
+* [ ] Docs clearly state Python is the sole location for MARL logic.
+
+**Out of Scope**
+
+* Adding new metrics or changing the reward formula.
+* Polarization implementation (still optional / future task).
+
+---
+
+## M3-03 — PettingZoo Wrapper: 10-Agent Stability & API Completeness
+
+**Description**
+Finalize `ArgosEnv` (Parallel API) for stable 10-agent operation: reset, step, seeding, spaces, `close()`, and error handling.
+
+**Priority**: P0 (Critical)
+**Dependencies**: M3-01, M3-02
+**Estimated Effort**: 6h
+
+**Scope / Tasks**
+
+* [ ] Validate observation/action spaces (discrete 4-action default).
+* [ ] Deterministic `reset(seed=…)` with proper re-seeding of ARGoS.
+* [ ] Correct step semantics (actions at T+1).
+* [ ] Expose metrics in `infos[agent_id]`.
+* [ ] PettingZoo parallel API compliance test.
+* [ ] Add timeouts/retries for ZeroMQ, graceful `close()`.
+
+**Acceptance Criteria**
+
+* [ ] `python -m pettingzoo.test.parallel_api_test zoo.argos_env:ArgosEnv` passes (or documented skips).
+* [ ] 10 agents run ≥10k steps without deadlocks or leaks.
+* [ ] Re-seeding produces identical first observations (when scenario allows).
+* [ ] Exceptions are informative; `close()` is idempotent.
+
+**Out of Scope**
+
+* PPO training scripts, TensorBoard.
+
+---
+
+## M3-04 — PPO Training Script (RLlib) with Shared Policy
+
+**Description**
+Add a minimal RLlib training script using a single shared policy across all agents, plus basic config flags and evaluation hooks.
+
+**Priority**: P1 (High)
+**Dependencies**: M3-03
+**Estimated Effort**: 6–8h
+
+**Scope / Tasks**
+
+* [ ] `scripts/train_aggregation_rllib.py` with CLI (env path, seeds, steps).
+* [ ] Multi-agent mapping (single shared policy).
+* [ ] Sensible PPO defaults (clip=0.2, lr=3e-4, entropy=0.01, etc.).
+* [ ] Periodic evaluation episodes (no learning) and checkpointing.
+* [ ] Log custom metrics (cohesion, success-rate) to TB.
+
+**Acceptance Criteria**
+
+* [ ] Script launches training and saves checkpoints & TB logs.
+* [ ] Evaluation reports success-rate and average cohesion.
+* [ ] Run completes a short smoke session (e.g., 20k env steps) locally.
+* [ ] README snippet shows example command.
+
+**Out of Scope**
+
+* Hyperparameter sweeps, long runs.
+
+---
+
+## M3-05 — Heuristic Baseline (Aggregation) + Unified Evaluator
+
+**Description**
+Implement a simple aggregation heuristic (prox-avoid + forward bias + small noise) and a shared evaluation harness to compare RL vs. baseline on identical seeds.
+
+**Priority**: P1 (High)
+**Dependencies**: M3-03
+**Estimated Effort**: 5–6h
+
+**Scope / Tasks**
+
+* [ ] `scripts/baseline_aggregation.py` (deterministic with seed).
+* [ ] `scripts/eval_compare.py` to run N seeds × episodes for RL checkpoint vs baseline.
+* [ ] Output CSV with metrics (success-rate, mean cohesion, collisions proxy).
+* [ ] Quick plot helper (matplotlib) for success-rate & cohesion.
+
+**Acceptance Criteria**
+
+* [ ] Baseline runs headless and completes fixed-length episodes.
+* [ ] Evaluator produces a CSV with per-seed metrics.
+* [ ] Plots generated and saved under `eval/plots/…`.
+* [ ] README explains how to reproduce the comparison.
+
+**Out of Scope**
+
+* Fancy heuristics; flocking objectives.
+
+---
+
+## M3-06 — Results & Report for M3
+
+**Description**
+Produce a concise results package: plots (return, cohesion, success-rate), one short episode clip/gif, and a markdown summary.
+
+**Priority**: P2 (Medium)
+**Dependencies**: M3-04, M3-05
+**Estimated Effort**: 4–6h
+
+**Scope / Tasks**
+
+* [ ] Generate training curves from TensorBoard (export or re-plot).
+* [ ] Plot evaluator metrics (RL vs baseline).
+* [ ] Record a short eval episode and export GIF/MP4.
+* [ ] Write `reports/m3_results.md` (setup, metrics, best config, findings).
+
+**Acceptance Criteria**
+
+* [ ] `reports/m3_results.md` contains: task definition, metrics, best hyperparams, and a brief discussion.
+* [ ] Plots readable and committed under `reports/` or `eval/plots/`.
+* [ ] One short demo clip is available under `reports/media/`.
+* [ ] All artifact paths/commands are documented.
+
+**Out of Scope**
+
+* Formal paper writing.
+
+---
+
+## M3-S1 (Stretch) — Flocking Reward & 5-Action Variant
+
+**Description**
+Extend reward with polarization term and optionally add a 5th action (`backward`). Provide a config switch between Aggregation and Flocking objectives.
+
+**Priority**: P3 (Low / Stretch)
+**Dependencies**: M3-02, M3-04
+**Estimated Effort**: 4h
+
+**Scope / Tasks**
+
+* [ ] Compute polarization P per step in loop.
+* [ ] Reward extension: `r += w_align * P`.
+* [ ] Optional action 5: backward (gated by CLI/flag).
+* [ ] Configurable objective in training script.
+
+**Acceptance Criteria**
+
+* [ ] When enabled, P is logged to TB and CSV evaluators.
+* [ ] Training runs with 5-action space without crashes.
+* [ ] Clear documentation of flags and defaults.
+
+**Out of Scope**
+
+* Full flocking benchmark study.
+
+---
+
+## M3-S2 (Stretch) — Centralized Value / MAPPO-Style Critic
+
+**Description**
+Add an optional centralized value function (shared policy, central critic) to compare against vanilla shared-PPO.
+
+**Priority**: P3 (Low / Stretch)
+**Dependencies**: M3-04
+**Estimated Effort**: 6h
+
+**Scope / Tasks**
+
+* [ ] Implement centralized-value config (global features assembled only for critic).
+* [ ] Keep observations unchanged for the policy (no state leak).
+* [ ] Training flag to toggle baseline vs centralized-value.
+
+**Acceptance Criteria**
+
+* [ ] Centralized-value run completes a short smoke training.
+* [ ] Metrics logged and comparable with baseline PPO.
+* [ ] README notes trade-offs and how features are constructed.
+
+**Out of Scope**
+
+* Extensive hyperparameter tuning.
+
+---
+
+### Cross-Issue Notes (add to each if you like)
+
+* **Labels:** `milestone:M3`, `component:argos`, `component:python`, `area:training`, `priority:P0|P1|P2|P3`
+* **Done means:** Code + tests + docs updated; CI green; example command in README runs.

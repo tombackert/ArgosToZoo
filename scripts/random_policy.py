@@ -3,7 +3,7 @@
 
 Usage:
     PYTHONPATH=src python scripts/random_policy.py \
-        --argos experiments/footbot_5.argos --episodes 3 --steps 100 --seed 123
+    --argos experiments/footbot_10.argos --episodes 3 --steps 100 --seed 123
 
 Features:
 * Demonstrates PettingZoo parallel API loop with discrete action sampling.

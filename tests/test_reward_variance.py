@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from zoo.argos_env import ArgosEnv
 
-EXPERIMENT = 'experiments/footbot_5.argos'
+EXPERIMENT = "experiments/footbot_10.argos"
 
 
 @pytest.mark.integration
@@ -21,4 +21,6 @@ def test_reward_variance():
     arr = np.array(rewards_collected, dtype=float)
     assert arr.size > 0
     # Require some variance (not all identical)
-    assert not np.allclose(arr, arr[0]), 'Rewards appear constant; expected variance > 0.'
+    assert not np.allclose(
+        arr, arr[0]
+    ), "Rewards appear constant; expected variance > 0."

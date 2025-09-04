@@ -32,7 +32,7 @@ Behavior:
 
 Example:
 ```python
-env = ArgosEnv('experiments/footbot_5.argos', log_level='DEBUG', loop_log_level='DEBUG')
+env = ArgosEnv('experiments/footbot_10.argos', log_level='DEBUG', loop_log_level='DEBUG')
 ```
 
 ## C++ Logging (Controllers & Loop Functions)
@@ -49,12 +49,12 @@ Accepted: `DEBUG`, `INFO`, `WARN`, `ERROR` (case‑insensitive; invalid -> INFO 
 Shell example:
 ```bash
 ARGOS_CONTROLLER_LOG_LEVEL=ERROR ARGOS_LOOP_LOG_LEVEL=DEBUG \
-  argos3 -c experiments/footbot_5.argos
+  argos3 -c experiments/footbot_10.argos
 ```
 
 Through Python (preferred):
 ```python
-env = ArgosEnv('experiments/footbot_5.argos', controller_log_level='ERROR', loop_log_level='DEBUG')
+env = ArgosEnv('experiments/footbot_10.argos', controller_log_level='ERROR', loop_log_level='DEBUG')
 ```
 
 ## ZMQ Diagnostics (Loop DEBUG)

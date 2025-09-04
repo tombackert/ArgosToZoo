@@ -28,6 +28,12 @@ class ArgosEnv(ParallelEnv):
         quiet: bool = False,
         controller_log_level: Optional[str] = None,
         loop_log_level: Optional[str] = None,
+        # --- Aggregation reward / metrics config (M3-02) ---
+        w_coh: float = 1.0,
+        w_col: float = 0.5,
+        w_move: float = 0.05,
+        success_threshold: float = 0.25,
+        success_hold: int = 20,
     ):
         """ARGoS ParallelEnv wrapper.
 
@@ -101,6 +107,16 @@ class ArgosEnv(ParallelEnv):
             "turn_left": "left_speed",
             "turn_right": "right_speed",
         }
+        # ---- Aggregation metrics / reward internal state (M3-02) ----
+        self._w_coh = float(w_coh)
+        self._w_col = float(w_col)
+        self._w_move = float(w_move)
+        self._success_threshold = float(success_threshold)
+        self._success_hold = int(success_hold)
+        self._prev_cohesion = None  # type: Optional[float]
+        self._success_streak = 0
+        self._prev_positions_snapshot = None  # list of last positions
+        self._first_reward_step = True
 
     def _log_stream(self, stream, prefix):
         for line in iter(stream.readline, ""):
@@ -123,6 +139,11 @@ class ArgosEnv(ParallelEnv):
     def reset(self, seed=None, options=None):
         # Reset episode counters
         self.timestep = 0
+        # Reset aggregation state
+        self._prev_cohesion = None
+        self._success_streak = 0
+        self._prev_positions_snapshot = None
+        self._first_reward_step = True
         if options and "max_steps" in options:
             self._max_steps = int(options["max_steps"])
 
@@ -164,7 +185,8 @@ class ArgosEnv(ParallelEnv):
 
         self.agents = self.possible_agents[:]
         observations = self._decode_observations(obs_block)
-        infos = {agent: {} for agent in self.agents}
+        metrics = self._compute_metrics(reply)  # baseline (reward=0)
+        infos = {agent: {"metrics": metrics} for agent in self.agents}
         return observations, infos
 
     def step(self, actions):
@@ -190,22 +212,13 @@ class ArgosEnv(ParallelEnv):
             self._last_positions = obs_block.get("position", [])
         observations = self._decode_observations(obs_block)
 
-        # Rewards (provided inside observations.rewards)
-        raw_rewards = reply.get("observations", {}).get("rewards", {})
-        rewards: dict[str, float] = {}
-        if isinstance(raw_rewards, dict):
-            for agent in self.agents:
-                val = raw_rewards.get(agent, 0.0)
-                try:
-                    rewards[agent] = float(val)
-                except Exception:
-                    rewards[agent] = 0.0
-        else:
-            rewards = {agent: 0.0 for agent in self.agents}
-
+        # Compute aggregation metrics & reward (Python-side per M3-02)
+        metrics = self._compute_metrics(reply, observations)
+        team_reward = metrics.get("reward", 0.0)
+        rewards = {agent: team_reward for agent in self.agents}
         terminations = {agent: False for agent in self.agents}
         truncations = {agent: False for agent in self.agents}
-        infos = {agent: {} for agent in self.agents}
+        infos = {agent: {"metrics": metrics} for agent in self.agents}
 
         self.timestep += 1
         if self.timestep >= self._max_steps:
@@ -215,6 +228,129 @@ class ArgosEnv(ParallelEnv):
             return out
 
         return observations, rewards, terminations, truncations, infos
+
+    # ------------------ metrics & reward helpers (M3-02) ------------------
+    def _compute_metrics(
+        self, raw_reply: dict, decoded_obs: Optional[dict] = None
+    ) -> dict:
+        """Compute centroid, cohesion, delta_cohesion, success & aggregation reward.
+
+        Reward (team shared): r = w_coh*Δcohesion - w_col*max_prox + w_move*moved_mean
+        First step after reset => reward 0.0 (baseline suppression).
+        """
+        try:
+            obs_block = (
+                raw_reply.get("observations", {}) if isinstance(raw_reply, dict) else {}
+            )
+            agents = (
+                list(obs_block.get("agents", [])) if isinstance(obs_block, dict) else []
+            )
+            positions = (
+                obs_block.get("position", []) if isinstance(obs_block, dict) else []
+            )
+            # fallback if not compact schema
+            if not positions and decoded_obs:
+                # no positions available -> metrics minimal
+                positions = []
+            n = len(positions)
+            centroid = [0.0, 0.0, 0.0]
+            if n > 0:
+                for p in positions:
+                    if len(p) >= 3:
+                        centroid[0] += float(p[0])
+                        centroid[1] += float(p[1])
+                        centroid[2] += float(p[2])
+                centroid = [c / n for c in centroid]
+            # Cohesion (mean distance to centroid)
+            cohesion = 0.0
+            if n > 0:
+                acc = 0.0
+                for p in positions:
+                    if len(p) >= 2:
+                        dx = float(p[0]) - centroid[0]
+                        dy = float(p[1]) - centroid[1]
+                        acc += (dx * dx + dy * dy) ** 0.5
+                cohesion = acc / n if n else 0.0
+            # Delta cohesion (prev - current; improvement > 0)
+            delta_coh = (
+                0.0 if self._prev_cohesion is None else (self._prev_cohesion - cohesion)
+            )
+            # Movement mean distance since last step
+            moved_mean = 0.0
+            if (
+                self._prev_positions_snapshot
+                and len(self._prev_positions_snapshot) == n
+                and n > 0
+            ):
+                dsum = 0.0
+                count = 0
+                for prev_p, cur_p in zip(self._prev_positions_snapshot, positions):
+                    if len(prev_p) >= 2 and len(cur_p) >= 2:
+                        dx = float(cur_p[0]) - float(prev_p[0])
+                        dy = float(cur_p[1]) - float(prev_p[1])
+                        dsum += (dx * dx + dy * dy) ** 0.5
+                        count += 1
+                if count:
+                    moved_mean = dsum / count
+            # Collision proxy: maximum proximity reading across all agents
+            max_prox = 0.0
+            if decoded_obs is None:
+                # build minimal decoded obs dict to inspect proximities
+                decoded_obs = {}
+                if (
+                    isinstance(obs_block, dict)
+                    and obs_block.get("schema") == "compact_v1"
+                ):
+                    prox_lists = obs_block.get("proximity", [])
+                    for idx, a in enumerate(agents):
+                        decoded_obs[a] = {
+                            "proximity": np.array(
+                                prox_lists[idx] if idx < len(prox_lists) else [],
+                                dtype=np.float32,
+                            )
+                        }
+            if decoded_obs:
+                for a, od in decoded_obs.items():
+                    prox = od.get("proximity")
+                    if prox is not None and len(prox) > 0:
+                        try:
+                            max_prox = max(max_prox, float(np.max(prox)))
+                        except Exception:
+                            pass
+            # Success streak update
+            if cohesion < self._success_threshold:
+                self._success_streak += 1
+            else:
+                self._success_streak = 0
+            success = self._success_streak >= self._success_hold
+            # Reward (baseline suppression at first step after reset)
+            if self._first_reward_step:
+                reward = 0.0
+            else:
+                reward = (
+                    self._w_coh * delta_coh
+                    - self._w_col * max_prox
+                    + self._w_move * moved_mean
+                )
+            # Persist state for next step
+            self._prev_cohesion = cohesion
+            self._prev_positions_snapshot = (
+                [list(p) for p in positions] if positions else None
+            )
+            self._first_reward_step = False
+            return {
+                "centroid": centroid,
+                "cohesion_mean": cohesion,
+                "delta_cohesion": delta_coh,
+                "moved_mean": moved_mean,
+                "max_prox": max_prox,
+                "polarization": 0.0,  # placeholder (stretch goal)
+                "success": success,
+                "reward": reward,
+            }
+        except Exception as e:
+            self.logger.warn("metrics_error", error=str(e))
+            return {"reward": 0.0, "success": False}
 
     def _decode_observations(self, obs_dict):
         """Decode observations coming from the C++ side.

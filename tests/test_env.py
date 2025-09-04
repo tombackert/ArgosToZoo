@@ -10,7 +10,7 @@ import os
 from typing import Dict
 
 
-EXPERIMENT = "experiments/footbot_5.argos"
+EXPERIMENT = "experiments/footbot_10.argos"
 
 
 def run_demo(

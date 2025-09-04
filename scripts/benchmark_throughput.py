@@ -14,7 +14,7 @@ import statistics
 from zoo.argos_env import ArgosEnv
 
 EXPERIMENT_TEMPLATE = {
-    5: "experiments/footbot_5.argos",
+    5: "experiments/footbot_5.argos",  # legacy small scenario
     10: "experiments/footbot_10.argos",
     20: "experiments/footbot_20.argos",
 }
