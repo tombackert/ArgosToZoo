@@ -42,18 +42,17 @@ The system adopts a **centralized single-socket design (Option A of FUP-09)** fo
 
 Key aspects:
 
-1. **Central REP Socket:** Implemented in `zoo_loop_functions.cpp`; all agent actions are applied in `PreStep()`, and a single response with all observations + rewards is sent in `PostStep()`.
+1. **Central REP Socket:** Implemented in `zoo_loop_functions.cpp`; all agent actions are applied in `PreStep()`, and a single response with all raw observations (no rewards) is sent in `PostStep()`. Reward & metrics logic now lives purely in Python.
 2. **Agent Indexing:** Agents are deterministically named `robot_0..robot_{N-1}` in discovery order. Python infers the set after the first reset.
 3. **Batch Payloads:** Request JSON: `{ "command": "step", "payload": { "actions": { "robot_0": "forward_speed", ... }}}`. Response JSON contains an `observations` object.
-4. **Unified Observation Schema:** The environment always emits the compact batched envelope:
+4. **Unified Observation Schema:** The C++ layer emits a compact batched envelope with only task‑agnostic data:
    ```json
    {
      "observations": {
        "schema": "compact_v1",
        "agents": ["robot_0", "robot_1"],
        "proximity": [[...24 floats...], [...]],
-       "position": [[x,y,z], [...]],
-       "rewards": {"robot_0": 0.0, "robot_1": 0.01}
+  "position": [[x,y,z], [...]]
      }
    }
    ```
@@ -65,7 +64,7 @@ Key aspects:
 The typical control flow for a simulation step is as follows:
 
 1. The ARGoS simulator runs and calls the loop functions `PreStep()` and `PostStep()` each tick.
-2. `PostStep()` collects observations (and computes rewards) and blocks waiting for the next batched request from Python (REQ/REP ensures sync).
+2. `PostStep()` collects observations (no reward computation) and blocks waiting for the next batched request from Python (REQ/REP ensures sync).
 3. The Python `ArgosEnv.step()` sends one JSON request with all agent actions.
 4. `PreStep()` applies the newly received actions to each controller before physics advancement.
 5. The cycle repeats, guaranteeing exactly one simulation tick per Python step, aiding determinism and seed reproducibility.
@@ -133,7 +132,7 @@ Each `env.step(actions)` produces exactly *one* ARGoS tick (deterministic gating
 1. Python sends a batched `step` request containing the current tick's actions.
 2. Loop functions apply the actions at the start of the *next* physics tick (`PreStep`).
 3. The tick advances; controllers update sensors.
-4. Observations + rewards are packaged (`PostStep`) and returned as one reply.
+4. Observations are packaged (`PostStep`) and returned as one reply (Python derives rewards separately).
 5. Python receives the reply and constructs per‑agent observation dictionaries.
 
 This strict REQ/REP ordering (no pipelining) guarantees reproducible trajectories for identical seeds and action sequences (see FUP‑06 determinism goal). No internal buffering or multi‑tick batching is used.
@@ -148,8 +147,7 @@ Wire schema (always `compact_v1`):
     "schema": "compact_v1",
     "agents": ["robot_0", ...],
     "proximity": [[24 floats], ...],
-    "position": [[x,y,z], ...],
-    "rewards": {"robot_0": 0.0, ...}
+    "position": [[x,y,z], ...]
   }
 }
 ```
@@ -158,19 +156,17 @@ Python converts to per‑agent dicts with the active subset of features (current
 
 Extending with new sensors: append another parallel array (e.g. `light`, `imu`) and update the Python decoder. Only bump `schema` if a *breaking* semantic change occurs (renames, ordering changes, shape modifications). Non‑breaking additive fields leave the version unchanged.
 
-### 4. Reward Shaping
+### 4. Reward & Metrics (Python Ownership)
 
-Implemented (FUP‑05) in the loop functions, exposed verbatim to Python:
+All MARL task logic (aggregation reward, cohesion, collision proxy, movement bonus, success flag) runs in Python inside `ArgosEnv._compute_metrics`. The C++ side is intentionally task‑agnostic to keep the simulator reusable across different MARL tasks.
 
+Current aggregation reward (team shared):
 ```
-reward_i = distance_xy_moved_since_last_step_i - 0.5 * max_proximity_reading_i
+r = w_coh * Δcohesion - w_col * max_prox + w_move * moved_mean
 ```
+Metrics (surfaced via `infos[agent]['metrics']`): centroid, cohesion_mean, delta_cohesion, moved_mean, max_prox, success, polarization (placeholder), reward (team value).
 
-Notes:
-* First step after `reset()` emits 0.0 (baseline without distance baseline).
-* `distance_xy` is planar (ignores Z) to emphasise horizontal motion.
-* `max_proximity_reading` penalises close obstacles / congestion.
-* Coefficients intentionally simple; future shaping (potential fields, goal progress) should remain additive to preserve interpretability.
+Rationale: moving shaping to Python removes the need for recompilation when iterating on reward design, and prevents task leakage into the simulation layer.
 
 ### 5. Seeding & Reproducibility
 
@@ -221,7 +217,7 @@ See `scripts/random_policy.py` (added with FUP‑13) for extensible baseline usa
 1. Add new sensor in C++ (loop functions -> compact array field).
 2. Extend decoder in `argos_env.py` (update observation space + extraction logic).
 3. Write/extend a unit test validating shape & value ranges.
-4. (Optional) Add shaping term to reward—document formula in both C++ & this doc.
+4. (Optional) Add new shaping term—implement & document in Python only (do not modify C++ loop functions for reward logic).
 5. Run `pytest -q` and the random policy script for smoke verification.
 
 ---
@@ -246,7 +242,7 @@ PYTHONPATH=src python scripts/rl_smoke.py --argos experiments/footbot_10.argos \
 
 Interpretation:
 * Rising `mean_forward_prob` indicates the reward shaping supplies a differentiable learning signal.
-* Stable or collapsing probabilities may signal reward saturation, excessive penalty weight, or lack of variance—tune shaping coefficients in C++ loop functions if needed.
+* Stable or collapsing probabilities may signal reward saturation, excessive penalty weight, or lack of variance—tune Python shaping weights (`ArgosEnv` ctor params).
 * Because observations are unused, this test isolates communication + reward plumbing correctness from representation learning concerns.
 
 Extending the smoke test to observe-driven policies (future): replace stateless preferences with a linear layer over normalized proximity readings (concatenate across agents or per-agent independent policies) and include simple entropy regularization.
