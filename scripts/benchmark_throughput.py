@@ -5,7 +5,8 @@ Measures mean & p95 step latency and payload size for varying agent counts.
 Outputs a markdown table + CSV.
 
 Usage:
-  PYTHONPATH=src python scripts/benchmark_throughput.py --agents 5 10 --steps 400 --warmup 100
+    PYTHONPATH=src python scripts/benchmark_throughput.py --agents 5 10 --steps 400 --warmup 100 \
+        --scenario none|aggregation
 """
 from __future__ import annotations
 import argparse
@@ -20,8 +21,16 @@ EXPERIMENT_TEMPLATE = {
 }
 
 
-def run_case(num_agents: int, steps: int, warmup: int, log_level: str) -> dict:
+def run_case(
+    num_agents: int, steps: int, warmup: int, log_level: str, scenario: str
+) -> dict:
     exp = EXPERIMENT_TEMPLATE[num_agents]
+    reward_fn = None
+    if scenario == "aggregation":
+        # Lazy import to avoid hard dependency and keep benchmark flexible
+        from zoo.scenarios.aggregation import aggregation_reward
+
+        reward_fn = aggregation_reward
     env = ArgosEnv(
         exp,
         max_steps=steps + warmup + 10,
@@ -29,6 +38,7 @@ def run_case(num_agents: int, steps: int, warmup: int, log_level: str) -> dict:
         controller_log_level=log_level,
         loop_log_level=log_level,
         log_level="ERROR",
+        reward_fn=reward_fn,
     )
     try:
         env.reset(seed=0)
@@ -65,6 +75,12 @@ def main():
     ap.add_argument("--steps", type=int, default=300)
     ap.add_argument("--warmup", type=int, default=100)
     ap.add_argument("--log-level", default="ERROR")
+    ap.add_argument(
+        "--scenario",
+        choices=["none", "aggregation"],
+        default="none",
+        help="Optional scenario to attach a reward callback",
+    )
     # no file output; console only
     args = ap.parse_args()
 
@@ -72,7 +88,7 @@ def main():
     for n in args.agents:
         if n not in EXPERIMENT_TEMPLATE:
             raise SystemExit(f"No experiment template for {n} agents")
-        results.append(run_case(n, args.steps, args.warmup, args.log_level))
+    results.append(run_case(n, args.steps, args.warmup, args.log_level, args.scenario))
 
     # Determine column widths
     headers = ["agents", "steps", "mean_ms", "p95_ms", "min_ms", "max_ms", "payload_kb"]

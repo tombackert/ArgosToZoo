@@ -26,6 +26,12 @@ def parse_args():
     p.add_argument("--steps", type=int, default=100, help="Max steps per episode")
     p.add_argument("--seed", type=int, default=None, help="Base RNG seed (optional)")
     p.add_argument(
+        "--scenario",
+        choices=["none", "aggregation"],
+        default="none",
+        help="Optional scenario to attach a reward callback",
+    )
+    p.add_argument(
         "--log-level", default="ERROR", help="Python log level (default: ERROR)"
     )
     p.add_argument(
@@ -38,9 +44,7 @@ def parse_args():
 
 
 def run_episode(env: ArgosEnv, max_steps: int, rng: np.random.Generator):
-    obs, info = env.reset(
-        seed=env._current_seed
-    )  # keep existing seed (already applied)
+    # Assumes env.reset() has already been called by caller
     total_reward = {a: 0.0 for a in env.agents}
     for _ in range(max_steps):
         if not env.agents:
@@ -59,22 +63,29 @@ def main():
     base_seed = args.seed
     rng = np.random.default_rng(base_seed)
 
+    reward_fn = None
+    if args.scenario == "aggregation":
+        from zoo.scenarios.aggregation import aggregation_reward
+
+        reward_fn = aggregation_reward
+
     env = ArgosEnv(
         argos_file=args.argos,
         log_level=args.log_level,
         controller_log_level=args.controller_log_level,
         loop_log_level=args.loop_log_level,
         quiet=(args.log_level.upper() == "ERROR"),
+        reward_fn=reward_fn,
     )
 
     try:
         for ep in range(args.episodes):
-            # Derive per-episode seed (if base given), else None -> stochastic
             ep_seed = None if base_seed is None else int(base_seed + ep)
-            if ep_seed is not None:
-                env.reset(seed=ep_seed)
+            obs, info = env.reset(seed=ep_seed)
             rewards = run_episode(env, args.steps, rng)
             mean_per_agent = sum(rewards.values()) / max(len(rewards), 1)
+            print(f"Info: {info}")
+            # print(f"Obserbations: {obs}")
             print(
                 f"Episode {ep + 1}/{args.episodes}: total={sum(rewards.values()):.3f} "
                 f"mean/agent={mean_per_agent:.3f} agents={len(rewards)}"

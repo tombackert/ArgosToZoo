@@ -1,59 +1,79 @@
-import zmq
+#!/usr/bin/env python3
+"""Manual keyboard control using ArgosEnv (PettingZoo) instead of raw ZMQ.
+
+Usage:
+  PYTHONPATH=src python scripts/manual_control.py --argos experiments/footbot_10.argos \
+      --scenario none|aggregation --seed 0
+"""
+from __future__ import annotations
+import argparse
+from zoo.argos_env import ArgosEnv
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description="Manual control via ArgosEnv")
+    p.add_argument("--argos", required=True, help="Path to .argos experiment file")
+    p.add_argument("--seed", type=int, default=None, help="Optional env seed")
+    p.add_argument(
+        "--scenario",
+        choices=["none", "aggregation"],
+        default="none",
+        help="Optional scenario to attach a reward callback",
+    )
+    p.add_argument("--log-level", default="ERROR")
+    p.add_argument("--loop-log-level", default="ERROR")
+    p.add_argument("--controller-log-level", default="ERROR")
+    return p.parse_args()
 
 
 def main():
-    """A client that controls multiple ARGoS robots simultaneously."""
-    context = zmq.Context()
-    ports = ["5555"]
-    sockets = []
+    args = parse_args()
+    reward_fn = None
+    if args.scenario == "aggregation":
+        from zoo.scenarios.aggregation import aggregation_reward
 
-    print("Connecting to ARGoS servers...")
-    for port in ports:
-        socket = context.socket(zmq.REQ)
-        socket.connect(f"tcp://localhost:{port}")
-        sockets.append(socket)
-        print(f"  - Connected to port {port}")
+        reward_fn = aggregation_reward
+
+    env = ArgosEnv(
+        argos_file=args.argos,
+        log_level=args.log_level,
+        loop_log_level=args.loop_log_level,
+        controller_log_level=args.controller_log_level,
+        reward_fn=reward_fn,
+        quiet=(args.log_level.upper() == "ERROR"),
+    )
 
     try:
+        env.reset(seed=args.seed)
+        print("Controls: w/a/s/d for forward/left/back/right, 'x' stop, 'q' quit")
+        key_to_action = {
+            "x": "stop",
+            "w": "forward",
+            "s": "backward",
+            "a": "turn_left",
+            "d": "turn_right",
+        }
         while True:
-            cmd = input("Command (w/a/s/d/stop/exit): ").strip().lower()
-
-            if cmd == "exit":
+            cmd = input("Command (w/a/s/d/x/q): ").strip().lower()
+            if cmd == "q":
                 break
-
-            left_speed, right_speed = 0.0, 0.0
-            if cmd == 'w':
-                left_speed, right_speed = 10.0, 10.0
-            elif cmd == 's':
-                left_speed, right_speed = -10.0, -10.0
-            elif cmd == 'a':
-                left_speed, right_speed = -5.0, 5.0
-            elif cmd == 'd':
-                left_speed, right_speed = 5.0, -5.0
-            elif cmd == 'stop':
-                left_speed, right_speed = 0.0, 0.0
-            else:
+            if cmd not in key_to_action:
                 print("Unknown command.")
                 continue
-
-            command = {"left_speed": left_speed, "right_speed": right_speed}
-
-            # Send the command to all robots
-            for i, socket in enumerate(sockets):
-                print(f"Sending command to robot {i} on port {ports[i]}: {command}")
-                socket.send_json(command)
-
-            # Wait for the response from all robots
-            for i, socket in enumerate(sockets):
-                response = socket.recv_json()
-                print(f"Response from robot {i} received: {response}")
-
-    except KeyboardInterrupt:
-        print("\nExiting client.")
+            # Map to discrete index via env helper mapping
+            logical = key_to_action[cmd]
+            # Convert logical to final controller command via env internal mapping
+            # Here we send per-agent the logical command string, env._convert_action accepts strings
+            actions = {a: logical for a in env.agents}
+            obs, rewards, terms, truncs, infos = env.step(actions)
+            # Summarize feedback
+            rsum = sum(float(r) for r in rewards.values()) if rewards else 0.0
+            print(f"step done: total_reward={rsum:.3f}")
+            if not obs:
+                print("Episode finished (truncate/terminate). Resetting...")
+                env.reset(seed=args.seed)
     finally:
-        for socket in sockets:
-            socket.close()
-        context.term()
+        env.close()
 
 
 if __name__ == "__main__":
