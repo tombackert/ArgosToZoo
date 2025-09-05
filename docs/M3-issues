@@ -269,6 +269,62 @@ Add an optional centralized value function (shared policy, central critic) to co
 
 ---
 
+## M3-02-RF — Reward Callback Refactor (reward_fn) & Scenario Decoupling
+
+**Description**
+Introduce a single, generic `reward_fn` callback mechanism to `ArgosEnv` and remove hard‑coded Aggregation reward logic from the core environment. This makes the bridge fully task‑agnostic. The existing aggregation shaping (Δ‑cohesion, proximity penalty, motion bonus, success streak) is moved into an external function `aggregation_reward(...)` inside a new module (`src/zoo/scenarios/aggregation.py`). Core `ArgosEnv` returns `0.0` rewards by default (broadcast to all agents) unless a callback is supplied. The previous `_compute_metrics` implementation and constructor parameters (`w_coh`, `w_col`, `w_move`, `success_threshold`, `success_hold`) are deprecated (kept short‑term with warnings, ignored for logic) and scheduled for removal in a later milestone (M4 cleanup issue to be opened). Documentation is updated to clarify the new extensibility model and to correct any outdated statements about loop / plugin reward ownership.
+
+**Priority**: P0 (Refactor – enables future scenarios)
+**Dependencies**: M3-02 merged; aligns with M3-02-FUP philosophy
+**Estimated Effort**: 4–6h
+
+**Scope / Tasks**
+* [ ] Add optional `reward_fn` parameter to `ArgosEnv.__init__`.
+* [ ] Implement internal neutral reward path: if `reward_fn is None` → team reward = 0.0, metrics = {}.
+* [ ] Extract current aggregation logic into `aggregation_reward(data, w_coh=..., w_col=..., w_move=..., success_threshold=..., success_hold=...)` returning `(team_reward, per_agent, metrics)`; put in `src/zoo/scenarios/aggregation.py`.
+* [ ] Replace all calls to `_compute_metrics` in `reset()` / `step()` with callback invocation; keep `_compute_metrics` as a deprecated stub returning `{ "reward": 0.0 }` (log or `DeprecationWarning`).
+* [ ] Constructor: accept legacy parameters (`w_coh`, `w_col`, `w_move`, `success_threshold`, `success_hold`) but: (a) emit `DeprecationWarning`; (b) store them ONLY if no `reward_fn` provided; (c) do not alter default neutral reward path.
+* [ ] Provide thin adapter so passing legacy params without `reward_fn` still yields previous aggregation behavior by internally constructing a reward_fn (temporary compatibility). Mark adapter for removal (M4 ticket).
+* [ ] Add runtime warning if both legacy params (changed from defaults) AND explicit `reward_fn` are supplied (ignore legacy values).
+* [ ] Update README: Observation schema table (remove claim about C++ / per‑agent rewards), add “Reward Extensibility” subsection with callback example.
+* [ ] Update `docs/architecture.md`: clarify layer separation (C++ plugin task‑agnostic; Python bridge + external reward callbacks).
+* [ ] Update `docs/how-to-run.md` snippet showing usage: `env = ArgosEnv(argos_file, reward_fn=aggregation_reward)`.
+* [ ] Update `docs/tests.md`: note new reward callback testing pattern (unit test the function independently of simulator where possible by constructing synthetic `data`).
+* [ ] Add new module docstring in `scenarios/aggregation.py` explaining metrics and shaping formula.
+* [ ] Introduce guard test ensuring `ArgosEnv` public API (apart from deprecated params) has no scenario‑specific knobs.
+* [ ] Open follow‑up placeholder ticket (M3-RM-LEGACY) for removing deprecated reward params + stub.
+
+**Tests (Add / Adapt)**
+* [ ] `test_reward_default_zero`: Instantiate `ArgosEnv` without `reward_fn`; run ≥3 steps; assert all rewards == 0.0 and metrics dict keys are empty (or subset {"reward"} with 0.0).
+* [ ] `test_reward_callback_aggregation_changes`: Use `aggregation_reward` with random actions; collect rewards over ≥5 steps; assert variance > 0 (non‑constant) and metrics contain required keys (`centroid`, `cohesion_mean`, `delta_cohesion`, `moved_mean`, `max_prox`, `success`, `reward`).
+* [ ] `test_reward_callback_error_fallback`: Pass a `reward_fn` that raises an exception; step once; assert env logs a warning (optional: via caplog) and returns reward 0.0 without crashing.
+* [ ] `test_reward_per_agent_custom`: Provide a custom `reward_fn` that returns a `per_agent` dict with differing values; assert rewards reflect those differences (no broadcasting override).
+* [ ] `test_legacy_params_adapter`: Instantiate with legacy params but no `reward_fn`; verify a non‑zero reward emerges by step >1 (backwards compatibility) and a `DeprecationWarning` captured.
+* [ ] Update any existing tests referencing `_compute_metrics` to instead: (a) rely on callback path or (b) assert deprecated stub output minimal.
+* [ ] Adjust existing metric/reward tests (`test_metrics_reward.py`, etc.) to import `aggregation_reward` and (if needed) unit‑test it with a fabricated `data` dict (positions & proximities) for deterministic math checks.
+* [ ] Add guard test `test_argos_env_public_api_no_task_knobs` that inspects `ArgosEnv.__init__.__code__.co_varnames` (or signature) ensuring only deprecated names + `reward_fn` exist (fail if new task‑specific params sneak in).
+
+**Acceptance Criteria**
+* [ ] All tests (including new ones) pass locally (`pytest -q`).
+* [ ] Running an episode with no `reward_fn` produces constant 0.0 rewards and empty metrics (except deprecated stub fields if present) across ≥5 steps.
+* [ ] Using `aggregation_reward` reproduces prior behavior (reward magnitude + metric keys) within tolerance (no regression in existing aggregation tests).
+* [ ] Intentional exception inside a `reward_fn` does not crash the environment; reward defaults to 0.0 that step.
+* [ ] README + architecture docs updated: reward logic clearly externalized; no stale references to “loop‑side reward” or C++ reward emission.
+* [ ] `ArgosEnv` help / docstring reflects new parameter; deprecated params labelled and emit `DeprecationWarning` when changed from defaults.
+* [ ] New scenario module `scenarios/aggregation.py` exists with documented formula and is imported only where needed (no circular deps).
+* [ ] Guard test ensures no unintended scenario parameters re‑added to core.
+* [ ] Follow‑up removal issue (M3-RM-LEGACY) created (placeholder) referencing this refactor.
+
+**Out of Scope**
+* Adding new metrics (e.g., polarization) beyond what aggregation already used.
+* Policy training scripts (handled in M3-04 / later issues).
+* Removal of deprecated parameters (future M3-RM-LEGACY task).
+
+**Rationale / Notes**
+Single `reward_fn` keeps the core bridge minimal, improves testability (pure function tests), and eliminates dual extension paths (inheritance vs callback). This reduces surface area and clarifies that ALL scenario logic belongs outside the core transport wrapper.
+
+---
+
 ### Cross-Issue Notes (add to each if you like)
 
 * **Labels:** `milestone:M3`, `component:argos`, `component:python`, `area:training`, `priority:P0|P1|P2|P3`

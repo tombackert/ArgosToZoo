@@ -4,7 +4,7 @@ High‑performance bridge between the [ARGoS](https://www.argos-sim.info) swarm 
 
 > Goal: Run physically realistic swarm experiments while writing learning logic purely in Python.
 
-> Proof of concept: Run a 5 agents 
+> Proof of concept: Run a 10 agents aggregation scenario. 
 
 ## Quick Links (Documentation Hub)
 
