@@ -22,10 +22,10 @@ High‑performance bridge between the [ARGoS](https://www.argos-sim.info) swarm 
 
 | Aspect | Summary |
 |--------|---------|
-| Data Path | Batched REQ/REP (single ZeroMQ socket) each tick: Python sends all actions → C++ returns all observations & rewards |
+| Data Path | Batched REQ/REP (single ZeroMQ socket) each tick: Python sends all actions → C++ returns task‑agnostic observations (reward computed in Python callback) |
 | Action Space | Uniform discrete mapping (stop, forward, backward, turn_left, turn_right) |
-| Observation Schema | Compact array format (`compact_v1`) with proximity (24), positions, per‑agent rewards |
-| Reward Shaping | Aggregation (Python loop side): `r = w_coh*Δcohesion - w_col*max_prox + w_move*moved_mean` (first step = 0.0) |
+| Observation Schema | Compact array format (`compact_v1`) with proximity (24) + positions (no rewards in wire payload) |
+| Reward Shaping | External `reward_fn` callback (e.g. `aggregation_reward`); default env reward is constant 0.0 |
 | Determinism | One simulator tick per `env.step()`; seeding restarts ARGoS with fixed seed |
 | Scaling Proven | Benchmarked up to 20 agents with constant latency (~50ms @ 20Hz tick) |
 
@@ -101,7 +101,7 @@ Metrics are computed in Python (not part of observations) and surfaced each step
 | `polarization` | Placeholder (0.0; future heading alignment) |
 | `success` | True after cohesion_mean < 0.25 for 20 consecutive steps |
 
-Reward coefficients default: `w_coh=1.0, w_col=0.5, w_move=0.05` (tunable via `ArgosEnv` ctor). Team reward is shared across agents.
+Aggregation reference formula (implemented in `zoo/scenarios/aggregation.py`): `r = w_coh*Δcohesion - w_col*max_prox + w_move*moved_mean` (first step forced 0.0). These weights are function arguments, not environment constructor params. Provide the callback via `ArgosEnv(..., reward_fn=aggregation_reward)`.
 
 
 ## Scenario

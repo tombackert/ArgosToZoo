@@ -21,22 +21,29 @@ Plan of Milestone 3 so that within ~50h we achieve a visible, measurable POC wit
   *(Optional 5-actions: +`backward` for flocking fine-tuning.)*
 * **Timing:** Apply actions at *T+1* (already done).
 
-# Rewards (task-specific)
+# Rewards (task-specific via callback)
 
-**Aggregation reward per agent i:**
+Reward shaping is implemented *exclusively* in a Python callback (`reward_fn`). The environment itself supplies only observations. The provided aggregation reference callback (`aggregation_reward`) uses a **team** reward formula:
 
 ```
-r_i = w_coh * (Δ Cohesion Gain) 
-      - w_col * max_proximity_i
-      + w_move * distance_moved_i
+r_team = w_coh * Δcohesion - w_col * max_prox + w_move * moved_mean
 ```
 
-* *Cohesion Gain:* negative mean distance to the K nearest neighbors or to the **global centroid** (reward only, not as observation). Practically:
-  `cohesion_t = - mean_i ||pos_i - centroid||`  → Δ = cohesion_t − cohesion_{t−1}
-* *Collision/Spacing:* `max_proximity` as proxy for too little spacing.
-* *Motion:* small forward bonus against “standing still”.
-* **Initial weights:** `w_coh=1.0`, `w_col=0.5`, `w_move=0.05`.
-* **Episode bonus:** If success criterion met → +`R_success` (e.g. +10) once.
+Definitions:
+* `cohesion_mean` = mean distance to centroid (lower better); `Δcohesion = prev - current` (improvement > 0).
+* `max_prox` = maximum proximity sensor value across agents (collision / spacing proxy).
+* `moved_mean` = mean per‑agent displacement since previous step.
+* `success` flag when cohesion_mean < R_thr for T_hold consecutive steps (exposed as metric; any episodic bonus handled inside callback if desired).
+
+Example weights used in early experiments (purely callback arguments, **not** env constructor params): `w_coh=1.0`, `w_col=0.5`, `w_move=0.05`.
+
+Usage:
+```python
+from zoo.scenarios.aggregation import aggregation_reward
+env = ArgosEnv("experiments/footbot_10.argos", reward_fn=aggregation_reward)
+```
+
+To explore variants just wrap or fork the callback; no change to `ArgosEnv` required.
 
 **Flocking add-on (stretch):**
 

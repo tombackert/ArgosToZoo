@@ -156,17 +156,45 @@ Python converts to per‑agent dicts with the active subset of features (current
 
 Extending with new sensors: append another parallel array (e.g. `light`, `imu`) and update the Python decoder. Only bump `schema` if a *breaking* semantic change occurs (renames, ordering changes, shape modifications). Non‑breaking additive fields leave the version unchanged.
 
-### 4. Reward & Metrics (Python Ownership)
+### 4. Reward & Metrics (External Callback Ownership)
 
-All MARL task logic (aggregation reward, cohesion, collision proxy, movement bonus, success flag) runs in Python inside `ArgosEnv._compute_metrics`. The C++ side is intentionally task‑agnostic to keep the simulator reusable across different MARL tasks.
+All MARL task logic (metrics, reward shaping, success detection) lives **outside** the core environment via a user‑supplied `reward_fn` callback. `ArgosEnv` itself is intentionally task‑agnostic and only:
 
-Current aggregation reward (team shared):
+1. Starts / restarts the simulator (seeded).
+2. Translates actions ↔ wire commands.
+3. Decodes compact batched observations into per‑agent dicts.
+4. Provides a mutable per‑episode cache (`data['prev']`) to the callback.
+
+The default behavior (no `reward_fn`) is a constant team reward of `0.0` with an empty metrics dict (`{"reward": 0.0}`).
+
+Example (aggregation scenario) lives in `zoo/scenarios/aggregation.py`:
 ```
-r = w_coh * Δcohesion - w_col * max_prox + w_move * moved_mean
+(team_reward, per_agent, metrics) = aggregation_reward(data)
 ```
-Metrics (surfaced via `infos[agent]['metrics']`): centroid, cohesion_mean, delta_cohesion, moved_mean, max_prox, success, polarization (placeholder), reward (team value).
+Where `metrics` includes: `centroid`, `cohesion_mean`, `delta_cohesion`, `moved_mean`, `max_prox`, `success`, `reward`.
 
-Rationale: moving shaping to Python removes the need for recompilation when iterating on reward design, and prevents task leakage into the simulation layer.
+Callback data contract (passed each step):
+```
+{
+  'step': int,
+  'agents': List[str],
+  'positions': np.ndarray|None (N,3),
+  'proximities': Dict[agent, np.ndarray(24,)],
+  'prev': dict  # mutable state cache persisted across steps in the episode
+  'first_step': bool
+}
+```
+Return contract:
+```
+(team_reward: float, per_agent: Optional[Dict[str,float]], metrics: Dict[str,Any])
+```
+If `per_agent` is `None`, the team reward is broadcast to all agents. Any exception inside the callback is caught; the environment logs a warning and substitutes `(0.0, None, {})` for that step (fail‑soft principle).
+
+Design Rationale:
+* Eliminates hidden scenario knobs from the core API (single extensibility mechanism).
+* Hot‑swapping reward logic requires no recompilation or subclassing.
+* Encourages pure, unit‑testable reward functions (see `tests/test_metrics_reward.py`).
+* Prevents task leakage into C++ loop functions; the simulator remains reusable.
 
 ### 5. Seeding & Reproducibility
 
@@ -212,12 +240,12 @@ It will:
 
 See `scripts/random_policy.py` (added with FUP‑13) for extensible baseline usage.
 
-### 9. Development Checklist (Extending the Env)
+### 9. Development Checklist (Extending the Env or Adding a Scenario)
 
 1. Add new sensor in C++ (loop functions -> compact array field).
 2. Extend decoder in `argos_env.py` (update observation space + extraction logic).
 3. Write/extend a unit test validating shape & value ranges.
-4. (Optional) Add new shaping term—implement & document in Python only (do not modify C++ loop functions for reward logic).
+4. (Optional) Add new shaping term—implement in a new callback (do **not** modify C++ loop functions for reward logic).
 5. Run `pytest -q` and the random policy script for smoke verification.
 
 ---
