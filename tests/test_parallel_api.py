@@ -9,7 +9,7 @@ import pytest
 from pettingzoo.test import parallel_api_test
 from zoo.argos_env import ArgosEnv
 
-EXPERIMENT = "experiments/footbot_10.argos"
+EXPERIMENT = "experiments/footbot_5.argos"
 
 
 @pytest.mark.integration

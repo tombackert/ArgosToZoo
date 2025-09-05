@@ -1,13 +1,14 @@
 import numpy as np
 import pytest
 from zoo.argos_env import ArgosEnv
+from zoo.scenarios.aggregation import aggregation_reward
 
 EXPERIMENT = "experiments/footbot_10.argos"
 
 
 @pytest.mark.integration
 def test_reward_variance():
-    env = ArgosEnv(EXPERIMENT, max_steps=15)
+    env = ArgosEnv(EXPERIMENT, max_steps=15, reward_fn=aggregation_reward)
     obs, info = env.reset(seed=123)
     rewards_collected = []
     for _ in range(10):
