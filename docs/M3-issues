@@ -325,6 +325,53 @@ Single `reward_fn` keeps the core bridge minimal, improves testability (pure fun
 
 ---
 
+## M3-RM-LEGACY — Remove Legacy Aggregation Params & Internal Reward Paths
+
+**Description**
+Hard-remove all deprecated aggregation reward parameters and legacy internal reward code from `ArgosEnv` to enforce a *single* extensibility mechanism (the `reward_fn` callback). Simplify the environment by deleting unused state (`_prev_cohesion`, `_success_streak`, etc.) and legacy helper methods (`_legacy_compute_aggregation`, deprecated `_compute_metrics` stub). Passing any removed legacy parameter must raise a clear `TypeError` (or `ValueError`) guiding users to provide a `reward_fn` or scenario module. This keeps the codebase lean and prevents silent fallback behavior.
+
+**Priority**: P0 (Hygiene / Simplification — execute immediately after M3-02-RF merge)
+**Dependencies**: M3-02-RF merged
+**Estimated Effort**: 2–3h
+
+**Scope / Tasks**
+* [ ] Remove legacy constructor params: `w_coh`, `w_col`, `w_move`, `success_threshold`, `success_hold` from `ArgosEnv.__init__` signature.
+* [ ] Delete legacy state variables and their resets: `_w_coh`, `_w_col`, `_w_move`, `_success_threshold`, `_success_hold`, `_prev_cohesion`, `_success_streak`, `_prev_positions_snapshot`, `_first_reward_step`.
+* [ ] Delete `_legacy_compute_aggregation` implementation.
+* [ ] Delete `_compute_metrics` stub (or replace with a minimal private no-op if still referenced). Ensure no callers remain.
+* [ ] Purge any conditional branches using `_legacy_params_used` logic.
+* [ ] Introduce parameter validation: if user still passes removed kwargs (detected via `**kwargs` intercept), raise `TypeError` with message: "Aggregation shaping params removed. Provide reward_fn or use scenarios/aggregation."
+* [ ] Update all tests to remove references to legacy attributes/state.
+* [ ] Add failing test ensuring that supplying any removed parameter name raises immediately (`pytest.raises(TypeError)`).
+* [ ] Add guard test scanning `ArgosEnv.__init__` signature for absence of removed names.
+* [ ] Update README + `architecture.md` to eliminate any residual mention of those parameters or internal shaping.
+* [ ] Update `tests.md` to reflect the *only* reward extension path is `reward_fn` and scenario modules.
+* [ ] (Optional) Bump minor version / add CHANGELOG entry summarizing removal.
+
+**Tests (Add / Adapt)**
+* [ ] `test_removed_params_raise`: Parametrized over removed names; constructing `ArgosEnv(argos_file, **{name: 123})` raises `TypeError`.
+* [ ] `test_env_no_internal_reward_state`: After instantiation, `hasattr(env, '_prev_cohesion')` (and other legacy fields) is False.
+* [ ] Update `test_reward_variance` / related aggregation tests to rely solely on `reward_fn` path (already refactored in M3-02-RF but re-affirmed).
+* [ ] `test_argos_env_public_api_minimal`: Count of `__init__` parameters stays within expected set (document set) and matches snapshot.
+
+**Acceptance Criteria**
+* [ ] Codebase contains zero references (grep) to removed parameter names except in CHANGELOG or migration notes.
+* [ ] All tests pass (`pytest -q`).
+* [ ] Attempting to pass any removed parameter results in immediate, clear exception.
+* [ ] No legacy reward state attributes present on a fresh `ArgosEnv` instance.
+* [ ] Docs (README, architecture, tests) reflect single reward extension path; no mention of legacy shaping fields.
+* [ ] Guard tests protect against reintroduction.
+
+**Out of Scope**
+* Altering `aggregation_reward` formula.
+* Introducing new scenario wrappers or reward components.
+* Version tagging automation (manual release process outside scope if not already defined).
+
+**Rationale / Notes**
+Eliminates ambiguous dual pathways (implicit legacy vs explicit callback), simplifies mental model, reduces maintenance overhead, and enforces universal tool purity. Early removal minimizes future merge conflicts and accidental reliance on deprecated internals.
+
+---
+
 ### Cross-Issue Notes (add to each if you like)
 
 * **Labels:** `milestone:M3`, `component:argos`, `component:python`, `area:training`, `priority:P0|P1|P2|P3`

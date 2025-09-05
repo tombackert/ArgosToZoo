@@ -7,10 +7,10 @@ import tempfile
 import os
 import xml.etree.ElementTree as ET
 from pettingzoo import ParallelEnv
-from gymnasium.spaces import Box, Dict, Discrete
+from gymnasium.spaces import Box, Dict, Discrete  # space Dict
 from .zmq_client import ZMQClient
 from .logging_utils import get_logger
-from typing import Optional, Callable, Dict, Any, Tuple
+from typing import Optional, Callable, Any, Tuple, Dict as TDict
 
 
 class ArgosEnv(ParallelEnv):
@@ -28,19 +28,14 @@ class ArgosEnv(ParallelEnv):
         quiet: bool = False,
         controller_log_level: Optional[str] = None,
         loop_log_level: Optional[str] = None,
-        # Deprecated aggregation shaping params (kept temporarily for backward compatibility)
-        w_coh: float = 1.0,  # deprecated, use reward_fn
-        w_col: float = 0.5,  # deprecated, use reward_fn
-        w_move: float = 0.05,  # deprecated, use reward_fn
-        success_threshold: float = 0.25,
-        success_hold: int = 20,
-        # New generic reward callback (M3-02-RF). Signature: fn(data) -> (team_reward, per_agent|None, metrics_dict)
+        # Single extensibility mechanism: reward_fn callback.
         reward_fn: Optional[
             Callable[
-                [Dict[str, Any]],
-                Tuple[float, Optional[Dict[str, float]], Dict[str, Any]],
+                [TDict[str, Any]],
+                Tuple[float, Optional[TDict[str, float]], TDict[str, Any]],
             ]
         ] = None,
+        **kwargs: Any,
     ):
         """ARGoS ParallelEnv wrapper.
 
@@ -63,6 +58,21 @@ class ArgosEnv(ParallelEnv):
         loop_log_level : Optional[str]
             Convenience: if provided sets $ARGOS_LOOP_LOG_LEVEL for the simulator subprocess.
         """
+        # Guard against removed legacy parameters (M3-RM-LEGACY)
+        removed = {
+            "w_coh",
+            "w_col",
+            "w_move",
+            "success_threshold",
+            "success_hold",
+        }
+        unexpected = removed.intersection(kwargs.keys())
+        if unexpected:
+            raise TypeError(
+                "Removed legacy aggregation parameters passed: "
+                f"{sorted(unexpected)}. Provide reward_fn (see scenarios/aggregation) instead."
+            )
+
         effective_level = "ERROR" if quiet else log_level
         self.logger = get_logger(effective_level, log_format)
 
@@ -114,46 +124,9 @@ class ArgosEnv(ParallelEnv):
             "turn_left": "left_speed",
             "turn_right": "right_speed",
         }
-        # Reward callback & legacy aggregation state (deprecated path)
+        # Reward callback (single path) and generic per-episode mutable state cache
         self._reward_fn = reward_fn
-        self._legacy_params_used = reward_fn is None and (
-            w_coh != 1.0
-            or w_col != 0.5
-            or w_move != 0.05
-            or success_threshold != 0.25
-            or success_hold != 20
-        )
-        if reward_fn is not None and (
-            w_coh != 1.0
-            or w_col != 0.5
-            or w_move != 0.05
-            or success_threshold != 0.25
-            or success_hold != 20
-        ):
-            self.logger.warn(
-                "reward_fn_supersedes_legacy_params",
-                msg=(
-                    "reward_fn provided; legacy aggregation params are ignored and will be removed in a future release."
-                ),
-            )
-        if self._legacy_params_used:
-            self.logger.warn(
-                "deprecated_aggregation_params",
-                msg=(
-                    "Passing aggregation shaping params without reward_fn is deprecated. A compatibility internal callback will be constructed."
-                ),
-            )
-        # Legacy state (only used if _legacy_params_used); otherwise reward state is internal dict for callback caching
-        self._w_coh = float(w_coh)
-        self._w_col = float(w_col)
-        self._w_move = float(w_move)
-        self._success_threshold = float(success_threshold)
-        self._success_hold = int(success_hold)
-        self._prev_cohesion = None  # type: Optional[float]
-        self._success_streak = 0
-        self._prev_positions_snapshot = None  # list of last positions
-        self._first_reward_step = True
-        self._reward_state: Dict[str, Any] = {}  # generic cache for external reward_fn
+        self._reward_state: TDict[str, Any] = {}
 
     def _log_stream(self, stream, prefix):
         for line in iter(stream.readline, ""):
@@ -176,33 +149,24 @@ class ArgosEnv(ParallelEnv):
     def reset(self, seed=None, options=None):
         # Reset episode counters
         self.timestep = 0
-        # Reset legacy aggregation / reward state
-        self._prev_cohesion = None
-        self._success_streak = 0
-        self._prev_positions_snapshot = None
-        self._first_reward_step = True
+        # Reset reward state cache (external callback may store persistent values here)
         self._reward_state.clear()
         if options and "max_steps" in options:
             self._max_steps = int(options["max_steps"])
 
         # Seeding: ALWAYS restart underlying simulator if a seed is provided
-        # This guarantees deterministic reproduction of initial layouts
-        # across repeated resets with the same seed.
         if seed is not None:
             self._apply_seed_and_restart(seed)
 
         reply = self.client.send_command("reset")
         obs_block = reply.get("observations", {})
-        # Capture positions (compact schema) for reproducibility inspection
         if isinstance(obs_block, dict) and obs_block.get("schema") == "compact_v1":
             self._last_positions = obs_block.get("position", [])
 
         if not self._agents_initialized:
-            # Unified compact schema: agent ids stored in 'agents' array
             if isinstance(obs_block, dict) and obs_block.get("schema") == "compact_v1":
                 discovered = list(obs_block.get("agents", []))
             else:
-                # Fallback (legacy structure)
                 discovered = sorted(list(obs_block.keys()))
             if not discovered:
                 raise RuntimeError("No agents found in returned observations.")
@@ -223,8 +187,7 @@ class ArgosEnv(ParallelEnv):
 
         self.agents = self.possible_agents[:]
         observations = self._decode_observations(obs_block)
-        # Baseline metrics (no reward unless callback / legacy path)
-        metrics = self._compute_metrics(reply)  # deprecated stub returns neutral reward
+        metrics = {"reward": 0.0}
         infos = {agent: {"metrics": metrics} for agent in self.agents}
         return observations, infos
 
@@ -251,10 +214,9 @@ class ArgosEnv(ParallelEnv):
             self._last_positions = obs_block.get("position", [])
         observations = self._decode_observations(obs_block)
 
-        # Reward & metrics
-        metrics: Dict[str, Any] = {}
+        metrics: TDict[str, Any] = {}
         team_reward = 0.0
-        per_agent: Optional[Dict[str, float]] = None
+        per_agent: Optional[TDict[str, float]] = None
         if self._reward_fn is not None:
             # Build data package for callback
             obs_block = reply.get("observations", {}) if isinstance(reply, dict) else {}
@@ -277,10 +239,6 @@ class ArgosEnv(ParallelEnv):
             except Exception as e:
                 self.logger.warn("reward_fn_error", error=str(e))
                 team_reward, per_agent, metrics = 0.0, None, {}
-        elif self._legacy_params_used:
-            # Use legacy internal aggregation computation for backward compatibility
-            metrics = self._legacy_compute_aggregation(reply, observations)
-            team_reward = metrics.get("reward", 0.0)
         else:
             metrics = {"reward": 0.0}
             team_reward = 0.0
@@ -303,121 +261,7 @@ class ArgosEnv(ParallelEnv):
 
         return observations, rewards, terminations, truncations, infos
 
-    # ------------------ deprecated metrics stub (M3-02-RF) ------------------
-    def _compute_metrics(
-        self, raw_reply: dict, decoded_obs: Optional[dict] = None
-    ) -> dict:  # noqa: D401
-        """Deprecated: previously computed aggregation metrics.
-
-        Now returns a neutral metrics dict so older code accessing infos['metrics'] remains stable.
-        Actual reward shaping should be provided via `reward_fn`.
-        """
-        return {"reward": 0.0}
-
-    # ------------------ legacy aggregation path (temporary) ------------------
-    def _legacy_compute_aggregation(
-        self, raw_reply: dict, decoded_obs: Optional[dict] = None
-    ) -> dict:
-        try:
-            obs_block = (
-                raw_reply.get("observations", {}) if isinstance(raw_reply, dict) else {}
-            )
-            agents = (
-                list(obs_block.get("agents", [])) if isinstance(obs_block, dict) else []
-            )
-            positions = (
-                obs_block.get("position", []) if isinstance(obs_block, dict) else []
-            )
-            n = len(positions)
-            centroid = [0.0, 0.0, 0.0]
-            if n:
-                for p in positions:
-                    if len(p) >= 3:
-                        centroid[0] += float(p[0])
-                        centroid[1] += float(p[1])
-                        centroid[2] += float(p[2])
-                centroid = [c / n for c in centroid]
-            cohesion = 0.0
-            if n:
-                acc = 0.0
-                for p in positions:
-                    if len(p) >= 2:
-                        dx = float(p[0]) - centroid[0]
-                        dy = float(p[1]) - centroid[1]
-                        acc += (dx * dx + dy * dy) ** 0.5
-                cohesion = acc / n if n else 0.0
-            delta_coh = (
-                0.0 if self._prev_cohesion is None else (self._prev_cohesion - cohesion)
-            )
-            moved_mean = 0.0
-            if (
-                self._prev_positions_snapshot
-                and len(self._prev_positions_snapshot) == n
-                and n
-            ):
-                dsum = 0.0
-                count = 0
-                for prev_p, cur_p in zip(self._prev_positions_snapshot, positions):
-                    if len(prev_p) >= 2 and len(cur_p) >= 2:
-                        dx = float(cur_p[0]) - float(prev_p[0])
-                        dy = float(cur_p[1]) - float(prev_p[1])
-                        dsum += (dx * dx + dy * dy) ** 0.5
-                        count += 1
-                if count:
-                    moved_mean = dsum / count
-            max_prox = 0.0
-            if decoded_obs is None:
-                decoded_obs = {}
-                if (
-                    isinstance(obs_block, dict)
-                    and obs_block.get("schema") == "compact_v1"
-                ):
-                    prox_lists = obs_block.get("proximity", [])
-                    for idx, a in enumerate(agents):
-                        decoded_obs[a] = {
-                            "proximity": np.array(
-                                prox_lists[idx] if idx < len(prox_lists) else [],
-                                dtype=np.float32,
-                            )
-                        }
-            if decoded_obs:
-                for od in decoded_obs.values():
-                    prox = od.get("proximity")
-                    if prox is not None and len(prox) > 0:
-                        try:
-                            max_prox = max(max_prox, float(np.max(prox)))
-                        except Exception:
-                            pass
-            if cohesion < self._success_threshold:
-                self._success_streak += 1
-            else:
-                self._success_streak = 0
-            success = self._success_streak >= self._success_hold
-            if self._first_reward_step:
-                reward = 0.0
-            else:
-                reward = (
-                    self._w_coh * delta_coh
-                    - self._w_col * max_prox
-                    + self._w_move * moved_mean
-                )
-            self._prev_cohesion = cohesion
-            self._prev_positions_snapshot = (
-                [list(p) for p in positions] if positions else None
-            )
-            self._first_reward_step = False
-            return {
-                "centroid": centroid,
-                "cohesion_mean": cohesion,
-                "delta_cohesion": delta_coh,
-                "moved_mean": moved_mean,
-                "max_prox": max_prox,
-                "success": success,
-                "reward": reward,
-            }
-        except Exception as e:
-            self.logger.warn("legacy_metrics_error", error=str(e))
-            return {"reward": 0.0, "success": False}
+    # (Legacy reward implementation removed by M3-RM-LEGACY: all task logic must live in external callbacks.)
 
     def _decode_observations(self, obs_dict):
         """Decode observations coming from the C++ side.
