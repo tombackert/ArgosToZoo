@@ -261,8 +261,6 @@ class ArgosEnv(ParallelEnv):
 
         return observations, rewards, terminations, truncations, infos
 
-    # (Legacy reward implementation removed by M3-RM-LEGACY: all task logic must live in external callbacks.)
-
     def _decode_observations(self, obs_dict):
         """Decode observations coming from the C++ side.
 

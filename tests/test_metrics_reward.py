@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-from zoo.argos_env import ArgosEnv
 from zoo.scenarios.aggregation import aggregation_reward
 
 # Helper to build dummy observations mimicking structure expected from C++ side
@@ -13,7 +12,8 @@ EXPERIMENT = "experiments/footbot_10.argos"
 POSITIONS_CASES = [
     # perfectly overlapping agents -> cohesion 0
     np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]),
-    # triangle roughly radius ~0.816 to centroid (equilateral side 2) -> cohesion_mean ~0.9428? we compute directly
+    # triangle roughly radius ~0.816 to centroid (equilateral side 2)
+    # -> cohesion_mean ~0.9428? we compute directly
     np.array([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [1.0, 1.7320508, 0.0]]),
 ]
 

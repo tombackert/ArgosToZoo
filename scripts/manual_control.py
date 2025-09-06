@@ -2,8 +2,8 @@
 """Manual keyboard control using ArgosEnv (PettingZoo) instead of raw ZMQ.
 
 Usage:
-  PYTHONPATH=src python scripts/manual_control.py --argos experiments/footbot_10.argos \
-      --scenario none|aggregation --seed 0
+  PYTHONPATH=src python scripts/manual_control.py --argos experiments/visual/footbot_10_vis.argos \
+    --scenario none|aggregation --seed 0
 """
 from __future__ import annotations
 import argparse

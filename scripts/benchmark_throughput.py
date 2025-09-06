@@ -15,7 +15,8 @@ import statistics
 from zoo.argos_env import ArgosEnv
 
 EXPERIMENT_TEMPLATE = {
-    5: "experiments/footbot_5.argos",  # legacy small scenario
+    1: "experiments/footbot_1.argos",
+    5: "experiments/footbot_5.argos",
     10: "experiments/footbot_10.argos",
     20: "experiments/footbot_20.argos",
 }
@@ -88,7 +89,9 @@ def main():
     for n in args.agents:
         if n not in EXPERIMENT_TEMPLATE:
             raise SystemExit(f"No experiment template for {n} agents")
-    results.append(run_case(n, args.steps, args.warmup, args.log_level, args.scenario))
+        results.append(
+            run_case(n, args.steps, args.warmup, args.log_level, args.scenario)
+        )
 
     # Determine column widths
     headers = ["agents", "steps", "mean_ms", "p95_ms", "min_ms", "max_ms", "payload_kb"]

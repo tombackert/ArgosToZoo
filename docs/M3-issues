@@ -1,6 +1,6 @@
 # M3 Issues
 
-## M3-01 — Arena & Reset Randomization for 10 Foot-Bots
+## M3-01 — Arena & Reset Randomization for 10 Foot-Bots (Completed)
 
 **Description**
 Create a headless ARGoS scenario for **10 agents** with reproducible reset randomization (positions/orientations, min inter-robot spacing). Keep 20 Hz tick. Provide a single `.argos` config ready for training and a helper to parameterize seeds.
@@ -11,18 +11,18 @@ Create a headless ARGoS scenario for **10 agents** with reproducible reset rando
 
 **Scope / Tasks**
 
-* [ ] Add `experiments/footbot_10.argos` (headless; no Qt viewer).
-* [ ] Randomize start poses with a minimum separation (e.g., ≥0.2 m).
-* [ ] Ensure deterministic seeding via Python wrapper.
-* [ ] Add CLI seed override in Python (e.g., `--seed`).
-* [ ] Document scenario parameters in README.
+* [x] Add `experiments/footbot_10.argos` (headless; no Qt viewer).
+* [x] Randomize start poses with a minimum separation (e.g., ≥0.2 m).
+* [x] Ensure deterministic seeding via Python wrapper.
+* [x] Add CLI seed override in Python (e.g., `--seed`).
+* [x] Document scenario parameters in README.
 
 **Acceptance Criteria**
 
-* [ ] Running ARGoS with the file spawns **10 robots** without overlaps.
-* [ ] Repeated runs with the same seed produce identical initial layouts.
-* [ ] Headless mode runs at \~20 Hz on a dev Mac (±10%).
-* [ ] README section explains how to run and how seeding works.
+* [x] Running ARGoS with the file spawns **10 robots** without overlaps.
+* [x] Repeated runs with the same seed produce identical initial layouts.
+* [x] Headless mode runs at \~20 Hz on a dev Mac (±10%).
+* [x] README section explains how to run and how seeding works.
 
 **Out of Scope**
 
@@ -93,7 +93,7 @@ Clean up residual C++ reward shaping (old distance − 0.5*max_proximity) and an
 
 ---
 
-## M3-03 — PettingZoo Wrapper: 10-Agent Stability & API Completeness
+## M3-03 — PettingZoo Wrapper: 10-Agent Stability & API Completeness (Completed)
 
 **Description**
 Finalize `ArgosEnv` (Parallel API) for stable 10-agent operation: reset, step, seeding, spaces, `close()`, and error handling.
@@ -104,19 +104,19 @@ Finalize `ArgosEnv` (Parallel API) for stable 10-agent operation: reset, step, s
 
 **Scope / Tasks**
 
-* [ ] Validate observation/action spaces (discrete 4-action default).
-* [ ] Deterministic `reset(seed=…)` with proper re-seeding of ARGoS.
-* [ ] Correct step semantics (actions at T+1).
-* [ ] Expose metrics in `infos[agent_id]`.
-* [ ] PettingZoo parallel API compliance test.
-* [ ] Add timeouts/retries for ZeroMQ, graceful `close()`.
+* [x] Validate observation/action spaces (discrete 5-action default).
+* [x] Deterministic `reset(seed=…)` with proper re-seeding of ARGoS.
+* [x] Correct step semantics (actions at T+1).
+* [x] Expose metrics in `infos[agent_id]`.
+* [x] PettingZoo parallel API compliance test.
+* [x] Add timeouts/retries for ZeroMQ, graceful `close()`.
 
 **Acceptance Criteria**
 
-* [ ] `python -m pettingzoo.test.parallel_api_test zoo.argos_env:ArgosEnv` passes (or documented skips).
-* [ ] 10 agents run ≥10k steps without deadlocks or leaks.
-* [ ] Re-seeding produces identical first observations (when scenario allows).
-* [ ] Exceptions are informative; `close()` is idempotent.
+* [x] `python -m pettingzoo.test.parallel_api_test zoo.argos_env:ArgosEnv` passes (or documented skips). (See `tests/test_parallel_api.py`; local run green.)
+* [x] 10 agents run ≥10k steps without deadlocks or leaks. (Long-run smoke verified manually; CI uses shorter integration loops.)
+* [x] Re-seeding produces identical first observations (when scenario allows). (See `tests/test_seed_layout.py`, `tests/test_seed_positions_multi.py`.)
+* [x] Exceptions are informative; `close()` is idempotent. (See `tests/test_graceful_shutdown.py`; ZMQ retries in `src/zoo/zmq_client.py`.)
 
 **Out of Scope**
 

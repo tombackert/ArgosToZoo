@@ -8,7 +8,8 @@ Where:
     max_prox = max proximity sensor reading across all agents (collision proxy)
     moved_mean = mean translational displacement since previous step
 First step after reset => reward forced to 0.0 (baseline suppression).
-Success condition (boolean metric only): cohesion_mean < success_threshold for success_hold consecutive steps.
+Success condition (boolean metric only):
+cohesion_mean < success_threshold for success_hold consecutive steps.
 
 Input data dict (constructed in ArgosEnv.step):
     {
