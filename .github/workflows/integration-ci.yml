@@ -1,0 +1,105 @@
+name: Integration CI
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: integration-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-integration:
+    name: Full Integration
+    runs-on: macos-latest
+    env:
+      PYTHON_VERSION: '3.12'
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Homebrew deps (idempotent)
+        run: |
+          set -euo pipefail
+          brew update --quiet
+          if command -v cmake >/dev/null 2>&1; then
+            echo "cmake present"
+          else
+            brew install cmake
+          fi
+          FORMULAE="pkg-config libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen zeromq cppzmq clang-format"
+          for f in $FORMULAE; do
+            if brew list --versions "$f" >/dev/null 2>&1; then
+              echo "[brew] $f already installed"
+            else
+              brew install "$f"
+            fi
+          done
+
+      - name: Clone ARGoS source
+        run: |
+          if [ ! -d argos3 ]; then
+            git clone --depth 1 https://github.com/ilpincy/argos3.git
+          fi
+
+      - name: Restore ARGoS build cache
+        uses: actions/cache@v4
+        with:
+          path: argos3/build
+          key: macos-argos-build-v1-${{ hashFiles('argos3/src/CMakeLists.txt') }}
+          restore-keys: |
+            macos-argos-build-v1-
+
+      - name: Build & Install ARGoS
+        run: |
+          cd argos3
+          mkdir -p build
+          cd build
+          cmake -DCMAKE_CXX_STANDARD=17 ../src
+          make -j$(sysctl -n hw.ncpu)
+          sudo make install
+          which argos3
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pettingzoo
+          pip install flake8
+
+      - name: Lint C++
+        run: |
+          set -eo pipefail
+          FILES=$(find src/plugin -type f \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' \) ! -path 'src/plugin/common/json.hpp')
+          if [ -n "$FILES" ]; then
+            printf '%s\n' $FILES | xargs -n8 clang-format -n --Werror
+          fi
+
+      - name: Lint Python
+        run: flake8 src/zoo scripts tests
+
+      - name: Build C++ plugin
+        run: |
+          mkdir -p build
+          cd build
+          cmake ..
+          make -j$(sysctl -n hw.ncpu)
+
+      - name: Run full test suite
+        run: pytest -q
