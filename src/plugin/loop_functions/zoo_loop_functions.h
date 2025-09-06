@@ -94,9 +94,10 @@ private:
     void SendResponse(const json& j_response);
     json ReceiveRequest();
 
-    /* Internal state for reward calculation */
-    std::vector<CVector3> m_vecLastPositions;  // previous step positions
-    bool m_bFirstStep = true;
+    /* Internal state (no task-specific reward logic; Python owns MARL) */
+    std::vector<CVector3>
+        m_vecLastPositions;    // retained only if future kinematics needed
+    bool m_bFirstStep = true;  // legacy flag (can be removed later)
     ELogLevel m_eLogLevel;
     // Connection state tracking for clearer ZMQ status logs
     bool m_bSawFirstRequest = false;  // true after first successful recv

@@ -7,10 +7,10 @@ import tempfile
 import os
 import xml.etree.ElementTree as ET
 from pettingzoo import ParallelEnv
-from gymnasium.spaces import Box, Dict, Discrete
+from gymnasium.spaces import Box, Dict, Discrete  # space Dict
 from .zmq_client import ZMQClient
 from .logging_utils import get_logger
-from typing import Optional
+from typing import Optional, Callable, Any, Tuple, Dict as TDict
 
 
 class ArgosEnv(ParallelEnv):
@@ -28,6 +28,14 @@ class ArgosEnv(ParallelEnv):
         quiet: bool = False,
         controller_log_level: Optional[str] = None,
         loop_log_level: Optional[str] = None,
+        # Single extensibility mechanism: reward_fn callback.
+        reward_fn: Optional[
+            Callable[
+                [TDict[str, Any]],
+                Tuple[float, Optional[TDict[str, float]], TDict[str, Any]],
+            ]
+        ] = None,
+        **kwargs: Any,
     ):
         """ARGoS ParallelEnv wrapper.
 
@@ -50,6 +58,21 @@ class ArgosEnv(ParallelEnv):
         loop_log_level : Optional[str]
             Convenience: if provided sets $ARGOS_LOOP_LOG_LEVEL for the simulator subprocess.
         """
+        # Guard against removed legacy parameters (M3-RM-LEGACY)
+        removed = {
+            "w_coh",
+            "w_col",
+            "w_move",
+            "success_threshold",
+            "success_hold",
+        }
+        unexpected = removed.intersection(kwargs.keys())
+        if unexpected:
+            raise TypeError(
+                "Removed legacy aggregation parameters passed: "
+                f"{sorted(unexpected)}. Provide reward_fn (see scenarios/aggregation) instead."
+            )
+
         effective_level = "ERROR" if quiet else log_level
         self.logger = get_logger(effective_level, log_format)
 
@@ -101,6 +124,9 @@ class ArgosEnv(ParallelEnv):
             "turn_left": "left_speed",
             "turn_right": "right_speed",
         }
+        # Reward callback (single path) and generic per-episode mutable state cache
+        self._reward_fn = reward_fn
+        self._reward_state: TDict[str, Any] = {}
 
     def _log_stream(self, stream, prefix):
         for line in iter(stream.readline, ""):
@@ -123,27 +149,24 @@ class ArgosEnv(ParallelEnv):
     def reset(self, seed=None, options=None):
         # Reset episode counters
         self.timestep = 0
+        # Reset reward state cache (external callback may store persistent values here)
+        self._reward_state.clear()
         if options and "max_steps" in options:
             self._max_steps = int(options["max_steps"])
 
         # Seeding: ALWAYS restart underlying simulator if a seed is provided
-        # This guarantees deterministic reproduction of initial layouts
-        # across repeated resets with the same seed.
         if seed is not None:
             self._apply_seed_and_restart(seed)
 
         reply = self.client.send_command("reset")
         obs_block = reply.get("observations", {})
-        # Capture positions (compact schema) for reproducibility inspection
         if isinstance(obs_block, dict) and obs_block.get("schema") == "compact_v1":
             self._last_positions = obs_block.get("position", [])
 
         if not self._agents_initialized:
-            # Unified compact schema: agent ids stored in 'agents' array
             if isinstance(obs_block, dict) and obs_block.get("schema") == "compact_v1":
                 discovered = list(obs_block.get("agents", []))
             else:
-                # Fallback (legacy structure)
                 discovered = sorted(list(obs_block.keys()))
             if not discovered:
                 raise RuntimeError("No agents found in returned observations.")
@@ -164,7 +187,8 @@ class ArgosEnv(ParallelEnv):
 
         self.agents = self.possible_agents[:]
         observations = self._decode_observations(obs_block)
-        infos = {agent: {} for agent in self.agents}
+        metrics = {"reward": 0.0}
+        infos = {agent: {"metrics": metrics} for agent in self.agents}
         return observations, infos
 
     def step(self, actions):
@@ -190,22 +214,43 @@ class ArgosEnv(ParallelEnv):
             self._last_positions = obs_block.get("position", [])
         observations = self._decode_observations(obs_block)
 
-        # Rewards (provided inside observations.rewards)
-        raw_rewards = reply.get("observations", {}).get("rewards", {})
-        rewards: dict[str, float] = {}
-        if isinstance(raw_rewards, dict):
-            for agent in self.agents:
-                val = raw_rewards.get(agent, 0.0)
-                try:
-                    rewards[agent] = float(val)
-                except Exception:
-                    rewards[agent] = 0.0
+        metrics: TDict[str, Any] = {}
+        team_reward = 0.0
+        per_agent: Optional[TDict[str, float]] = None
+        if self._reward_fn is not None:
+            # Build data package for callback
+            obs_block = reply.get("observations", {}) if isinstance(reply, dict) else {}
+            positions = None
+            if isinstance(obs_block, dict) and obs_block.get("schema") == "compact_v1":
+                pos_list = obs_block.get("position", [])
+                if pos_list:
+                    positions = np.array(pos_list, dtype=np.float32)
+            proximities = {a: od["proximity"] for a, od in observations.items()}
+            data = {
+                "step": self.timestep,
+                "agents": list(self.agents),
+                "positions": positions,
+                "proximities": proximities,
+                "prev": self._reward_state,  # mutable cache
+                "first_step": self.timestep == 0,
+            }
+            try:
+                team_reward, per_agent, metrics = self._reward_fn(data)
+            except Exception as e:
+                self.logger.warn("reward_fn_error", error=str(e))
+                team_reward, per_agent, metrics = 0.0, None, {}
         else:
-            rewards = {agent: 0.0 for agent in self.agents}
-
+            metrics = {"reward": 0.0}
+            team_reward = 0.0
+        if per_agent is None:
+            rewards = {agent: float(team_reward) for agent in self.agents}
+        else:
+            rewards = {
+                agent: float(per_agent.get(agent, team_reward)) for agent in self.agents
+            }
         terminations = {agent: False for agent in self.agents}
         truncations = {agent: False for agent in self.agents}
-        infos = {agent: {} for agent in self.agents}
+        infos = {agent: {"metrics": metrics} for agent in self.agents}
 
         self.timestep += 1
         if self.timestep >= self._max_steps:

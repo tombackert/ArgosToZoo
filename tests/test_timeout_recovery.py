@@ -1,7 +1,7 @@
 import pytest
 from zoo.argos_env import ArgosEnv
 
-EXPERIMENT = "experiments/footbot_5.argos"
+EXPERIMENT = "experiments/footbot_10.argos"
 
 
 @pytest.mark.integration

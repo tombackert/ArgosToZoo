@@ -1,0 +1,364 @@
+# M3 Issues
+
+## M3-01 — Arena & Reset Randomization for 10 Foot-Bots (Completed)
+
+**Description**
+Create a headless ARGoS scenario for **10 agents** with reproducible reset randomization (positions/orientations, min inter-robot spacing). Keep 20 Hz tick. Provide a single `.argos` config ready for training and a helper to parameterize seeds.
+
+**Priority**: P0 (Critical)
+**Dependencies**: None
+**Estimated Effort**: 6–8h
+
+**Scope / Tasks**
+
+* [x] Add `experiments/footbot_10.argos` (headless; no Qt viewer).
+* [x] Randomize start poses with a minimum separation (e.g., ≥0.2 m).
+* [x] Ensure deterministic seeding via Python wrapper.
+* [x] Add CLI seed override in Python (e.g., `--seed`).
+* [x] Document scenario parameters in README.
+
+**Acceptance Criteria**
+
+* [x] Running ARGoS with the file spawns **10 robots** without overlaps.
+* [x] Repeated runs with the same seed produce identical initial layouts.
+* [x] Headless mode runs at \~20 Hz on a dev Mac (±10%).
+* [x] README section explains how to run and how seeding works.
+
+**Out of Scope**
+
+* Reward shaping, PPO integration.
+
+---
+
+## M3-02 — Python-Side Metrics & Aggregation Reward (Completed)
+
+**Description**
+Implement Python-side metrics (centroid, cohesion, optional polarization) and the **Aggregation reward** (Δ‑cohesion, proximity penalty, motion bonus). All metrics & rewards are now computed strictly via a user-supplied `reward_fn` callback (see M3-02-RF & M3-RM-LEGACY). The ARGoS C++ layer is task‑agnostic and never emits rewards. Metrics surface through the `infos[agent_id]["metrics"]` mapping.
+
+**Priority**: P0 (Critical)
+**Dependencies**: M3-01
+**Estimated Effort**: 6–8h
+
+**Scope / Tasks**
+
+* [x] Compute centroid and per-step cohesion.
+* [x] (Optional / deferred) Polarization placeholder (not required for aggregation baseline).
+* [x] Aggregation reward implemented in Python callback (see `scenarios/aggregation.py`).
+* [x] Episode success check handled inside callback (streak-based cohesion threshold).
+* [x] Metrics + success flag serialized via `infos` dict (Python layer only).
+* [x] Unit tests cover reward variance & legacy removal; direct metric unit tests deferred until polarization work.
+
+**Acceptance Criteria**
+
+* [x] Metrics appear in `info["metrics"]` (cohesion_mean, delta_cohesion, moved_mean, max_prox, success, reward, centroid).
+* [x] Reward values non-constant under movement; variance test passes.
+* [x] Success flag semantics validated in aggregation callback.
+* [x] Test suite green.
+
+**Out of Scope**
+
+* Logging/plots; PPO training.
+
+---
+
+### M3-02-FUP — Remove Legacy C++ Reward Logic & Enforce Python Ownership (Completed)
+
+**Description**
+Clean up residual C++ reward shaping (old distance − 0.5*max_proximity) and any serialization fields no longer consumed. Codify the architectural rule: ARGoS C++ layer provides only sensor/position data & basic lifecycle; all MARL / task logic resides in Python. Update docs & code comments accordingly, and add a guard to prevent accidental reintroduction of task-specific reward code into the loop functions.
+
+**Priority**: P0 (Post-M3-02 hygiene)
+**Dependencies**: M3-02 merged
+**Estimated Effort**: 1–2h
+
+**Scope / Tasks**
+
+* [x] Removed legacy reward logic from C++ loop functions (no reward fields emitted).
+* [x] JSON reply now contains only observations (agents, proximity, position).
+* [x] Added explicit comment in C++ enforcing task-agnostic rule.
+* [x] README & architecture wording updated (reward strictly Python-side).
+* [x] (Guard test indirect) Python tests assume absence of C++ reward; would fail if field reintroduced.
+* [x] Issues doc updated.
+
+**Acceptance Criteria**
+
+* [x] No task-specific reward code in C++.
+* [x] Python-side rewards unchanged (tests green).
+* [ ] (Optional future) Add explicit guard test for stray `rewards` key (not yet implemented; low risk currently).
+* [x] Docs declare Python-only MARL logic.
+
+**Out of Scope**
+
+* Adding new metrics or changing the reward formula.
+* Polarization implementation (still optional / future task).
+
+---
+
+## M3-03 — PettingZoo Wrapper: 10-Agent Stability & API Completeness (Completed)
+
+**Description**
+Finalize `ArgosEnv` (Parallel API) for stable 10-agent operation: reset, step, seeding, spaces, `close()`, and error handling.
+
+**Priority**: P0 (Critical)
+**Dependencies**: M3-01, M3-02
+**Estimated Effort**: 6h
+
+**Scope / Tasks**
+
+* [x] Validate observation/action spaces (discrete 5-action default).
+* [x] Deterministic `reset(seed=…)` with proper re-seeding of ARGoS.
+* [x] Correct step semantics (actions at T+1).
+* [x] Expose metrics in `infos[agent_id]`.
+* [x] PettingZoo parallel API compliance test.
+* [x] Add timeouts/retries for ZeroMQ, graceful `close()`.
+
+**Acceptance Criteria**
+
+* [x] `python -m pettingzoo.test.parallel_api_test zoo.argos_env:ArgosEnv` passes (or documented skips). (See `tests/test_parallel_api.py`; local run green.)
+* [x] 10 agents run ≥10k steps without deadlocks or leaks. (Long-run smoke verified manually; CI uses shorter integration loops.)
+* [x] Re-seeding produces identical first observations (when scenario allows). (See `tests/test_seed_layout.py`, `tests/test_seed_positions_multi.py`.)
+* [x] Exceptions are informative; `close()` is idempotent. (See `tests/test_graceful_shutdown.py`; ZMQ retries in `src/zoo/zmq_client.py`.)
+
+**Out of Scope**
+
+* PPO training scripts, TensorBoard.
+
+---
+
+## M3-04 — PPO Training Script (RLlib) with Shared Policy
+
+**Description**
+Add a minimal RLlib training script using a single shared policy across all agents, plus basic config flags and evaluation hooks.
+
+**Priority**: P1 (High)
+**Dependencies**: M3-03
+**Estimated Effort**: 6–8h
+
+**Scope / Tasks**
+
+* [ ] `scripts/train_aggregation_rllib.py` with CLI (env path, seeds, steps).
+* [ ] Multi-agent mapping (single shared policy).
+* [ ] Sensible PPO defaults (clip=0.2, lr=3e-4, entropy=0.01, etc.).
+* [ ] Periodic evaluation episodes (no learning) and checkpointing.
+* [ ] Log custom metrics (cohesion, success-rate) to TB.
+
+**Acceptance Criteria**
+
+* [ ] Script launches training and saves checkpoints & TB logs.
+* [ ] Evaluation reports success-rate and average cohesion.
+* [ ] Run completes a short smoke session (e.g., 20k env steps) locally.
+* [ ] README snippet shows example command.
+
+**Out of Scope**
+
+* Hyperparameter sweeps, long runs.
+
+---
+
+## M3-05 — Heuristic Baseline (Aggregation) + Unified Evaluator
+
+**Description**
+Implement a simple aggregation heuristic (prox-avoid + forward bias + small noise) and a shared evaluation harness to compare RL vs. baseline on identical seeds.
+
+**Priority**: P1 (High)
+**Dependencies**: M3-03
+**Estimated Effort**: 5–6h
+
+**Scope / Tasks**
+
+* [ ] `scripts/baseline_aggregation.py` (deterministic with seed).
+* [ ] `scripts/eval_compare.py` to run N seeds × episodes for RL checkpoint vs baseline.
+* [ ] Output CSV with metrics (success-rate, mean cohesion, collisions proxy).
+* [ ] Quick plot helper (matplotlib) for success-rate & cohesion.
+
+**Acceptance Criteria**
+
+* [ ] Baseline runs headless and completes fixed-length episodes.
+* [ ] Evaluator produces a CSV with per-seed metrics.
+* [ ] Plots generated and saved under `eval/plots/…`.
+* [ ] README explains how to reproduce the comparison.
+
+**Out of Scope**
+
+* Fancy heuristics; flocking objectives.
+
+---
+
+## M3-06 — Results & Report for M3
+
+**Description**
+Produce a concise results package: plots (return, cohesion, success-rate), one short episode clip/gif, and a markdown summary.
+
+**Priority**: P2 (Medium)
+**Dependencies**: M3-04, M3-05
+**Estimated Effort**: 4–6h
+
+**Scope / Tasks**
+
+* [ ] Generate training curves from TensorBoard (export or re-plot).
+* [ ] Plot evaluator metrics (RL vs baseline).
+* [ ] Record a short eval episode and export GIF/MP4.
+* [ ] Write `reports/m3_results.md` (setup, metrics, best config, findings).
+
+**Acceptance Criteria**
+
+* [ ] `reports/m3_results.md` contains: task definition, metrics, best hyperparams, and a brief discussion.
+* [ ] Plots readable and committed under `reports/` or `eval/plots/`.
+* [ ] One short demo clip is available under `reports/media/`.
+* [ ] All artifact paths/commands are documented.
+
+**Out of Scope**
+
+* Formal paper writing.
+
+---
+
+## M3-S1 (Stretch) — Flocking Reward & 5-Action Variant
+
+**Description**
+Extend reward with polarization term and optionally add a 5th action (`backward`). Provide a config switch between Aggregation and Flocking objectives.
+
+**Priority**: P3 (Low / Stretch)
+**Dependencies**: M3-02, M3-04
+**Estimated Effort**: 4h
+
+**Scope / Tasks**
+
+* [ ] Compute polarization P per step in loop.
+* [ ] Reward extension: `r += w_align * P`.
+* [ ] Optional action 5: backward (gated by CLI/flag).
+* [ ] Configurable objective in training script.
+
+**Acceptance Criteria**
+
+* [ ] When enabled, P is logged to TB and CSV evaluators.
+* [ ] Training runs with 5-action space without crashes.
+* [ ] Clear documentation of flags and defaults.
+
+**Out of Scope**
+
+* Full flocking benchmark study.
+
+---
+
+## M3-S2 (Stretch) — Centralized Value / MAPPO-Style Critic
+
+**Description**
+Add an optional centralized value function (shared policy, central critic) to compare against vanilla shared-PPO.
+
+**Priority**: P3 (Low / Stretch)
+**Dependencies**: M3-04
+**Estimated Effort**: 6h
+
+**Scope / Tasks**
+
+* [ ] Implement centralized-value config (global features assembled only for critic).
+* [ ] Keep observations unchanged for the policy (no state leak).
+* [ ] Training flag to toggle baseline vs centralized-value.
+
+**Acceptance Criteria**
+
+* [ ] Centralized-value run completes a short smoke training.
+* [ ] Metrics logged and comparable with baseline PPO.
+* [ ] README notes trade-offs and how features are constructed.
+
+**Out of Scope**
+
+* Extensive hyperparameter tuning.
+
+---
+
+## M3-02-RF — Reward Callback Refactor (reward_fn) & Scenario Decoupling (Completed)
+
+**Description**
+Introduce a single, generic `reward_fn` callback mechanism to `ArgosEnv` and remove hard‑coded Aggregation reward logic from the core environment. Aggregation shaping (Δ‑cohesion, proximity penalty, motion bonus, success streak) lives in `scenarios/aggregation.py`. Core `ArgosEnv` returns 0.0 rewards by default unless a callback is supplied. Legacy metric/reward internals and constructor shaping params have been fully removed (see M3-RM-LEGACY). Docs updated to reflect the externalized model.
+
+**Priority**: P0 (Refactor – enables future scenarios)
+**Dependencies**: M3-02 merged; aligns with M3-02-FUP philosophy
+**Estimated Effort**: 4–6h
+
+**Scope / Tasks**
+* [x] Added `reward_fn` parameter to `ArgosEnv.__init__`.
+* [x] Neutral reward path implemented (0.0 broadcast, empty metrics) when no callback.
+* [x] Aggregation logic extracted to `src/zoo/scenarios/aggregation.py` (pure function style).
+* [x] Deprecated internal `_compute_metrics` and adapter removed subsequently by M3-RM-LEGACY.
+* [x] Legacy params accepted only briefly (now fully removed; see M3-RM-LEGACY).
+* [x] README + architecture + success definition updated with callback contract.
+* [x] Module docstring documents formula & keys.
+* [x] Tests updated (`test_reward_variance`, `test_legacy_removal`).
+* [x] Follow-up removal executed early (M3-RM-LEGACY) instead of deferring.
+
+**Tests (Add / Adapt)**
+* [ ] `test_reward_default_zero`: Instantiate `ArgosEnv` without `reward_fn`; run ≥3 steps; assert all rewards == 0.0 and metrics dict keys are empty (or subset {"reward"} with 0.0).
+* [ ] `test_reward_callback_aggregation_changes`: Use `aggregation_reward` with random actions; collect rewards over ≥5 steps; assert variance > 0 (non‑constant) and metrics contain required keys (`centroid`, `cohesion_mean`, `delta_cohesion`, `moved_mean`, `max_prox`, `success`, `reward`).
+* [ ] `test_reward_callback_error_fallback`: Pass a `reward_fn` that raises an exception; step once; assert env logs a warning (optional: via caplog) and returns reward 0.0 without crashing.
+* [ ] `test_reward_per_agent_custom`: Provide a custom `reward_fn` that returns a `per_agent` dict with differing values; assert rewards reflect those differences (no broadcasting override).
+* [ ] `test_legacy_params_adapter`: Instantiate with legacy params but no `reward_fn`; verify a non‑zero reward emerges by step >1 (backwards compatibility) and a `DeprecationWarning` captured.
+	(All tests now reference only the callback path; no legacy metric function tests remain.)
+* [ ] Adjust existing metric/reward tests (`test_metrics_reward.py`, etc.) to import `aggregation_reward` and (if needed) unit‑test it with a fabricated `data` dict (positions & proximities) for deterministic math checks.
+* [ ] Add guard test `test_argos_env_public_api_no_task_knobs` that inspects `ArgosEnv.__init__.__code__.co_varnames` (or signature) ensuring only deprecated names + `reward_fn` exist (fail if new task‑specific params sneak in).
+
+**Acceptance Criteria**
+* [x] Full test suite passes (`pytest -q`).
+* [x] Episode with no callback yields constant zero rewards & empty metrics.
+* [x] Aggregation callback reproduces expected shaping; variance test green.
+* [ ] (Nice-to-have) Explicit test for callback exception fallback (not yet added; currently implicit via robust error handling path).
+* [x] Docs updated (README, architecture, success definition).
+* [x] Scenario module present & decoupled.
+* [x] Guard via `test_legacy_removal` ensures no legacy params.
+* [x] Removal issue executed immediately (M3-RM-LEGACY complete).
+
+**Out of Scope**
+* Adding new metrics (e.g., polarization) beyond what aggregation already used.
+* Policy training scripts (handled in M3-04 / later issues).
+* (Legacy parameter removal already completed in M3-RM-LEGACY.)
+
+**Rationale / Notes**
+Single `reward_fn` keeps the core bridge minimal, improves testability (pure function tests), and eliminates dual extension paths (inheritance vs callback). This reduces surface area and clarifies that ALL scenario logic belongs outside the core transport wrapper.
+
+---
+
+## M3-RM-LEGACY — Remove Legacy Aggregation Params & Internal Reward Paths (Completed)
+
+**Description**
+Hard-remove all deprecated aggregation reward parameters and legacy internal reward code from `ArgosEnv` to enforce a *single* extensibility mechanism (the `reward_fn` callback). Simplify the environment by deleting unused state (`_prev_cohesion`, `_success_streak`, etc.) and legacy helper methods (`_legacy_compute_aggregation`, deprecated `_compute_metrics` stub). Passing any removed legacy parameter must raise a clear `TypeError` (or `ValueError`) guiding users to provide a `reward_fn` or scenario module. This keeps the codebase lean and prevents silent fallback behavior.
+
+**Priority**: P0 (Hygiene / Simplification — execute immediately after M3-02-RF merge)
+**Dependencies**: M3-02-RF merged
+**Estimated Effort**: 2–3h
+
+**Scope / Tasks**
+* [x] Removed legacy constructor params entirely.
+* [x] Deleted all legacy reward state & helper methods.
+* [x] `_compute_metrics` & `_legacy_compute_aggregation` removed; no callers remain.
+* [x] Parameter validation raises `TypeError` on legacy kwargs.
+* [x] Tests updated; new `test_legacy_removal` added.
+* [x] Guard ensures absence of removed attributes.
+* [x] Docs scrubbed of legacy parameter mentions.
+* [ ] CHANGELOG entry not yet added (optional).
+
+**Tests (Add / Adapt)**
+All relevant tests implemented (`test_legacy_removal`, `test_reward_variance`, parallel API, logging). Additional snapshot/constructor count tests optional.
+
+**Acceptance Criteria**
+* [x] No code references to removed params remain.
+* [x] Full test suite passes.
+* [x] Legacy param usage raises `TypeError` (verified by test).
+* [x] No legacy reward state attributes on `ArgosEnv`.
+* [x] Docs reflect single callback path.
+* [x] Guard test covers reintroduction risk.
+* [ ] Optional CHANGELOG / migration note still to add (future minor enhancement).
+
+**Out of Scope**
+* Altering `aggregation_reward` formula.
+* Introducing new scenario wrappers or reward components.
+* Version tagging automation (manual release process outside scope if not already defined).
+
+**Rationale / Notes**
+Eliminates ambiguous dual pathways (implicit legacy vs explicit callback), simplifies mental model, reduces maintenance overhead, and enforces universal tool purity. Early removal minimizes future merge conflicts and accidental reliance on deprecated internals.
+
+---
+
+### Cross-Issue Notes (add to each if you like)
+
+* **Labels:** `milestone:M3`, `component:argos`, `component:python`, `area:training`, `priority:P0|P1|P2|P3`
+* **Done means:** Code + tests + docs updated; CI green; example command in README runs.

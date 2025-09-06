@@ -2,7 +2,7 @@
 """Headless 10-footbot scenario quick launcher with seed override.
 
 Usage:
-  python scripts/run_footbot10.py --seed 123 --steps 50
+  PYTHONPATH=src python scripts/run_footbot10.py --seed 123 --steps 50
 
 This script instantiates ArgosEnv with the 10-agent headless config and
 demonstrates deterministic reset randomization: repeating with the same seed
@@ -25,9 +25,26 @@ def main():
         default=str(Path("experiments/footbot_10.argos")),
         help="Path to .argos config",
     )
+    parser.add_argument(
+        "--scenario",
+        choices=["none", "aggregation"],
+        default="none",
+        help="Optional scenario to attach a reward callback",
+    )
     args = parser.parse_args()
 
-    env = ArgosEnv(argos_file=args.config, expected_num_agents=10, max_steps=args.steps)
+    reward_fn = None
+    if args.scenario == "aggregation":
+        from zoo.scenarios.aggregation import aggregation_reward
+
+        reward_fn = aggregation_reward
+
+    env = ArgosEnv(
+        argos_file=args.config,
+        expected_num_agents=10,
+        max_steps=args.steps,
+        reward_fn=reward_fn,
+    )
     obs, _ = env.reset(seed=args.seed)
     print(f"Agents: {list(obs.keys())}")
     positions = env.get_last_positions()

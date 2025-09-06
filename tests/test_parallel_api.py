@@ -20,6 +20,6 @@ def test_parallel_api():  # noqa: D401
     The test is intentionally limited to a small number of cycles because
     underlying ARGoS stepping is comparatively slow vs pure-python envs.
     """
-    env = ArgosEnv(argos_file=EXPERIMENT, max_steps=5)
+    env = ArgosEnv(argos_file=EXPERIMENT, max_steps=50)
     parallel_api_test(env, num_cycles=1000)
     env.close()

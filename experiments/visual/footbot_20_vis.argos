@@ -45,5 +45,4 @@
       <dynamics2d id="dyn2d" />
     </physics_engines>
     <media />
-    
   </argos-configuration>

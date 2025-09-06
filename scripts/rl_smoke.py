@@ -20,10 +20,9 @@ Limitations:
 
 Example:
     PYTHONPATH=src python scripts/rl_smoke.py \
-        --argos experiments/footbot_5.argos --episodes 20 --steps 50 \
-        --seed 123 --csv rl_smoke.csv --gamma 0.95 --lr 0.2
-
-After run inspect rl_smoke.csv or watch stdout for rising forward prob / reward.
+    --argos experiments/footbot_10.argos --episodes 20 --steps 50 \
+        --seed 123 --csv rl_smoke.csv --gamma 0.95 --lr 0.2 \
+        --scenario aggregation
 """
 from __future__ import annotations
 import argparse
@@ -49,6 +48,12 @@ def parse_args():
         "--log-level",
         default="ERROR",
         help="Python log level for environment (default: ERROR)",
+    )
+    p.add_argument(
+        "--scenario",
+        choices=["none", "aggregation"],
+        default="none",
+        help="Optional scenario to attach a reward callback",
     )
     return p.parse_args()
 
@@ -125,10 +130,18 @@ def main():
     args = parse_args()
     rng = np.random.default_rng(args.seed)
 
+    reward_fn = None
+    if args.scenario == "aggregation":
+        # Lazy import to avoid hard dependency if not used
+        from zoo.scenarios.aggregation import aggregation_reward
+
+        reward_fn = aggregation_reward
+
     env = ArgosEnv(
         argos_file=args.argos,
         log_level=args.log_level,
         quiet=(args.log_level.upper() == "ERROR"),
+        reward_fn=reward_fn,
     )
 
     csv_fields = [

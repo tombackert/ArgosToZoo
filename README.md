@@ -4,7 +4,7 @@ High‑performance bridge between the [ARGoS](https://www.argos-sim.info) swarm 
 
 > Goal: Run physically realistic swarm experiments while writing learning logic purely in Python.
 
-> Proof of concept: Run a 5 agents 
+> Proof of concept: Run a 10 agents aggregation scenario. 
 
 ## Quick Links (Documentation Hub)
 
@@ -22,10 +22,10 @@ High‑performance bridge between the [ARGoS](https://www.argos-sim.info) swarm 
 
 | Aspect | Summary |
 |--------|---------|
-| Data Path | Batched REQ/REP (single ZeroMQ socket) each tick: Python sends all actions → C++ returns all observations & rewards |
+| Data Path | Batched REQ/REP (single ZeroMQ socket) each tick: Python sends all actions → C++ returns task‑agnostic observations (reward computed in Python callback) |
 | Action Space | Uniform discrete mapping (stop, forward, backward, turn_left, turn_right) |
-| Observation Schema | Compact array format (`compact_v1`) with proximity (24), positions, per‑agent rewards |
-| Reward Shaping | `distance_xy - 0.5 * max_proximity` (first step = 0.0) |
+| Observation Schema | Compact array format (`compact_v1`) with proximity (24) + positions (no rewards in wire payload) |
+| Reward Shaping | External `reward_fn` callback (e.g. `aggregation_reward`); default env reward is constant 0.0 |
 | Determinism | One simulator tick per `env.step()`; seeding restarts ARGoS with fixed seed |
 | Scaling Proven | Benchmarked up to 20 agents with constant latency (~50ms @ 20Hz tick) |
 
@@ -44,7 +44,7 @@ rm -rf build && mkdir build && cd build && cmake .. && make -j$(sysctl -n hw.ncp
 # smoke test (5 agents, 3 steps)
 PYTHONPATH=src python - <<'PY'
 from zoo.argos_env import ArgosEnv
-env = ArgosEnv('experiments/footbot_5.argos', loop_log_level='WARN', controller_log_level='ERROR')
+env = ArgosEnv('experiments/footbot_10.argos', loop_log_level='WARN', controller_log_level='ERROR')
 obs, info = env.reset(seed=0)
 for _ in range(3):
     obs, rew, term, trunc, info = env.step({a:0 for a in env.agents})
@@ -87,6 +87,21 @@ This repository forms the foundation for a bachelor thesis; architectural and ex
 ---
 
 For deep dives start with: Concept → Architecture → How to Run → Tests → Logging.
+
+### Aggregation Metrics (M3-02)
+Metrics are computed in Python (not part of observations) and surfaced each step in `infos[agent]['metrics']`:
+
+| Metric | Meaning |
+|--------|---------|
+| `centroid` | `[x,y,z]` centroid of all robot positions |
+| `cohesion_mean` | Mean distance to centroid (aggregation radius) |
+| `delta_cohesion` | Previous cohesion_mean minus current (improvement > 0) |
+| `moved_mean` | Mean per-agent XY distance moved since last step |
+| `max_prox` | Maximum proximity reading across all agents (collision proxy) |
+| `polarization` | Placeholder (0.0; future heading alignment) |
+| `success` | True after cohesion_mean < 0.25 for 20 consecutive steps |
+
+Aggregation reference formula (implemented in `zoo/scenarios/aggregation.py`): `r = w_coh*Δcohesion - w_col*max_prox + w_move*moved_mean` (first step forced 0.0). These weights are function arguments, not environment constructor params. Provide the callback via `ArgosEnv(..., reward_fn=aggregation_reward)`.
 
 
 ## Scenario

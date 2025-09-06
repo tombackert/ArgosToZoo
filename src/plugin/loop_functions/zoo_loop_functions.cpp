@@ -238,13 +238,14 @@ void CZooLoopFunctions::Destroy() {
 }
 
 json CZooLoopFunctions::CollectObservations() {
-    // Unified compact batched schema (compact_v1)
+    // NOTE (M3-02-FUP): This function MUST remain task-agnostic.
+    // It only gathers raw sensor / position data. All MARL metrics & rewards
+    // are computed Python-side in ArgosEnv._compute_metrics.
     json response;
     response["observations"]["schema"] = "compact_v1";
     json agents = json::array();
     json proximity = json::array();
     json position = json::array();
-    json rewards = json::object();
     for (size_t i = 0; i < m_vecControllers.size(); ++i) {
         std::string agent_id = "robot_" + std::to_string(i);
         agents.push_back(agent_id);
@@ -270,34 +271,10 @@ json CZooLoopFunctions::CollectObservations() {
             position.push_back({0.0, 0.0, 0.0});
         }
         proximity.push_back(obs["proximity"]);
-
-        // Reward computation (FUP-05): distance moved (xy) - 0.5 * max
-        // proximity
-        Real reward = 0.0;
-        if (!m_bFirstStep && i < m_vecLastPositions.size()) {
-            // Current position just appended above; retrieve for distance
-            // calculation
-            const auto& lastPos = m_vecLastPositions[i];
-            const auto& cur = position.back();
-            if (cur.is_array() && cur.size() >= 2) {
-                Real dx = cur[0].get<double>() - lastPos.GetX();
-                Real dy = cur[1].get<double>() - lastPos.GetY();
-                Real dist = std::sqrt(dx * dx + dy * dy);
-                Real maxProx = 0.0;
-                for (const auto& pval : obs["proximity"]) {
-                    if (pval.is_number())
-                        maxProx = std::max(maxProx, (Real)pval.get<double>());
-                }
-                reward = dist - 0.5 * maxProx;
-            }
-        }
-        rewards[agent_id] = reward;
     }
     response["observations"]["agents"] = agents;
     response["observations"]["proximity"] = proximity;
-    response["observations"]["position"] =
-        position;  // currently unused in Python
-    response["observations"]["rewards"] = rewards;
+    response["observations"]["position"] = position;
     if (Enabled(ELogLevel::DEBUG)) {
         LoopLog(ELogLevel::DEBUG, std::string("Agents: ") + agents.dump());
         LoopLog(ELogLevel::DEBUG,
@@ -306,32 +283,8 @@ json CZooLoopFunctions::CollectObservations() {
                     (proximity.size() > 0 ? std::to_string(proximity[0].size())
                                           : "0"));
         LoopLog(ELogLevel::DEBUG, std::string("Positions: ") + position.dump());
-        LoopLog(ELogLevel::DEBUG, std::string("Rewards: ") + rewards.dump());
     }
-    // Update last positions AFTER computing rewards
-    for (size_t i = 0;
-         i < m_vecControllers.size() && i < m_vecLastPositions.size(); ++i) {
-        try {
-            CSpace::TMapPerType& footbots =
-                GetSpace().GetEntitiesByType("foot-bot");
-            auto it = footbots.begin();
-            size_t idx = 0;
-            for (; it != footbots.end(); ++it, ++idx) {
-                if (idx == i) {
-                    CFootBotEntity* pcFootBot =
-                        any_cast<CFootBotEntity*>(it->second);
-                    m_vecLastPositions[i] = pcFootBot->GetEmbodiedEntity()
-                                                .GetOriginAnchor()
-                                                .Position;
-                    break;
-                }
-            }
-        } catch (const std::exception&) {
-            // ignore
-        }
-    }
-    if (m_bFirstStep)
-        m_bFirstStep = false;  // only clear after producing first observation
+    if (m_bFirstStep) m_bFirstStep = false;
     return response;
 }
 
