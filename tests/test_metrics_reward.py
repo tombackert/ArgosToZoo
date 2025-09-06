@@ -32,16 +32,7 @@ def test_cohesion_monotonic_delta():
     pos2 = pos1 * 0.2
     n = pos1.shape[0]
     agents = [f"robot_{i}" for i in range(n)]
-    prox_zero = [[0.0] * 24 for _ in range(n)]
 
-    raw1 = {
-        "observations": {
-            "schema": "compact_v1",
-            "agents": agents,
-            "position": pos1.tolist(),
-            "proximity": prox_zero,
-        }
-    }
     data1 = {
         "step": 0,
         "agents": agents,
@@ -55,14 +46,6 @@ def test_cohesion_monotonic_delta():
     assert m1["delta_cohesion"] == 0.0
     assert m1["reward"] == 0.0
 
-    raw2 = {
-        "observations": {
-            "schema": "compact_v1",
-            "agents": agents,
-            "position": pos2.tolist(),
-            "proximity": prox_zero,
-        }
-    }
     data2 = {
         "step": 1,
         "agents": agents,
@@ -82,15 +65,6 @@ def test_success_flag():
 
     base = np.array([[0.0, 0.0, 0.0], [0.05, 0.0, 0.0], [0.0, 0.05, 0.0]])
     agents = [f"robot_{i}" for i in range(base.shape[0])]
-    prox_zero = [[0.0] * 24 for _ in agents]
-    raw = {
-        "observations": {
-            "schema": "compact_v1",
-            "agents": agents,
-            "position": base.tolist(),
-            "proximity": prox_zero,
-        }
-    }
     metrics = None
     for step in range(4):
         data = {
@@ -110,24 +84,8 @@ def test_collision_penalty():
 
     positions = np.array([[0, 0, 0], [1, 0, 0], [2, 0, 0]], dtype=float)
     agents = [f"robot_{i}" for i in range(positions.shape[0])]
-    prox_low = [[0.0] * 24 for _ in agents]
-    prox_high = [[0.9] * 24 for _ in agents]
-    raw_low = {
-        "observations": {
-            "schema": "compact_v1",
-            "agents": agents,
-            "position": positions.tolist(),
-            "proximity": prox_low,
-        }
-    }
-    raw_high = {
-        "observations": {
-            "schema": "compact_v1",
-            "agents": agents,
-            "position": positions.tolist(),
-            "proximity": prox_high,
-        }
-    }
+    # Define proximity patterns directly when calling aggregation_reward below
+    # Proximity sets (low/high) for collision penalty shaping
     # First step (no reward)
     aggregation_reward(
         {
