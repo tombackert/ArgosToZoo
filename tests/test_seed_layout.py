@@ -1,4 +1,5 @@
 import math
+import pytest
 from zoo.argos_env import ArgosEnv
 
 MIN_SEP = 0.19  # slightly below configured 0.2 to allow float tolerance
@@ -16,6 +17,7 @@ def pairwise_min_dist(positions):
     return dmin
 
 
+@pytest.mark.integration
 def test_seed_layout_determinism():
     env = ArgosEnv("experiments/footbot_10.argos", expected_num_agents=10)
     obs, _ = env.reset(seed=123)

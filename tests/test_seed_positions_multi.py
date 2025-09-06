@@ -1,4 +1,5 @@
 import math
+import pytest
 from zoo.argos_env import ArgosEnv
 
 
@@ -14,6 +15,7 @@ def positions_equal(p1, p2, tol=1e-6):
     return True
 
 
+@pytest.mark.integration
 def test_multiple_runs_same_seed_identical():
     seed = 777
     runs = 3
@@ -30,6 +32,7 @@ def test_multiple_runs_same_seed_identical():
         ), f"Layout {idx} differs for same seed {seed}"
 
 
+@pytest.mark.integration
 def test_different_seed_yields_different_layout():
     env1 = ArgosEnv("experiments/footbot_10.argos", expected_num_agents=10)
     env1.reset(seed=1001)

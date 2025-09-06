@@ -13,7 +13,8 @@ concurrency:
 jobs:
   fast-python:
     name: Fast Python (Feature Branch)
-    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    # Run on PRs and non-main pushes; lightweight (no ARGoS build)
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main')
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -26,6 +27,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # Ensure flake8 present even if not pinned in requirements
+          pip install flake8
       - name: Lint (Python only)
         run: flake8 src/zoo
       - name: Run fast tests (ARGoS-less)
@@ -33,7 +36,8 @@ jobs:
 
   full-integration:
     name: Full Integration (PR/Main)
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    # Only on pushes to main (post-merge): build ARGoS, C++ plugin, run full tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: macos-latest
     env:
       PYTHON_VERSION: '3.12'
