@@ -41,11 +41,11 @@ def env_creator(env_config):
     env = ArgosEnv(
         argos_file=argos_file,
         expected_num_agents=expected,
-        max_steps=250,
+        max_steps=400,
         reward_fn=aggregation_reward,
         quiet=True,
-        controller_log_level="DEBUG",
-        loop_log_level="DEBUG",
+        controller_log_level="ERROR",
+        loop_log_level="ERROR",
     )
     return env
 
@@ -56,7 +56,6 @@ if __name__ == "__main__":
     env_name = "argos_aggregation_v0"
     register_env(env_name, lambda config: ParallelPettingZooEnv(env_creator(config)))
 
-    
     config = (
         PPOConfig()
         .environment(
@@ -66,22 +65,26 @@ if __name__ == "__main__":
                 "expected_num_agents": 10,
             },
         )
-        .env_runners(num_env_runners=4, rollout_fragment_length=128)
+        .evaluation(evaluation_interval=None, evaluation_num_workers=0)
+        .env_runners(
+            num_env_runners=2,
+            rollout_fragment_length=256,
+            create_env_on_local_worker=False,
+        )
         .api_stack(
             enable_rl_module_and_learner=False,
             enable_env_runner_and_connector_v2=False,
         )
         .training(
-            # Typical defaults for obs vector input
-            train_batch_size=4096,
+            train_batch_size=8192,  # num_envs * rollout_fragment_length
             lr=3e-4,
             gamma=0.99,
             lambda_=0.95,
             use_gae=True,
             clip_param=0.2,
-            entropy_coeff=0.0,
+            entropy_coeff=0.01,  # More exploration
             vf_loss_coeff=0.5,
-            minibatch_size=256,
+            minibatch_size=512,
             num_epochs=10,
             model={
                 # Standard-FC net for vector obs
@@ -97,7 +100,7 @@ if __name__ == "__main__":
     tune.run(
         "PPO",
         name="PPO_ARGOS_AGGREGATION",
-        stop={"timesteps_total": 500000},  # Short training for testing
+        stop={"timesteps_total": 1000000},  # Short training for testing
         checkpoint_freq=10,
         storage_path="~/ray_results/" + env_name,
         config=config.to_dict(),
