@@ -137,6 +137,7 @@ class ArgosEnv(ParallelEnv):
         # 24 proximity sensor values
         return Dict(
             {
+                "position": Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
                 "proximity": Box(low=0, high=1, shape=(24,), dtype=np.float32),
             }
         )
@@ -214,6 +215,8 @@ class ArgosEnv(ParallelEnv):
             self._last_positions = obs_block.get("position", [])
         observations = self._decode_observations(obs_block)
 
+        #print(f"Positions: {observations["robot_0"]["position"]} | Proximity: {observations["robot_0"]["proximity"]}")  # Debug print
+
         metrics: TDict[str, Any] = {}
         team_reward = 0.0
         per_agent: Optional[TDict[str, float]] = None
@@ -281,20 +284,28 @@ class ArgosEnv(ParallelEnv):
         if isinstance(obs_dict, dict) and obs_dict.get("schema") == "compact_v1":
             agents = obs_dict.get("agents", [])
             proximities = obs_dict.get("proximity", [])
-            # positions = obs_dict.get("position", [])  # presently unused
+            positions = obs_dict.get("position", [])
             rebuilt: dict[str, dict] = {}
             for idx, agent in enumerate(agents):
                 prox_raw = np.array(
                     proximities[idx] if idx < len(proximities) else [],
                     dtype=np.float32,
                 )
-                rebuilt[agent] = {"proximity": prox_raw}
+                pos_raw = np.array(
+                    positions[idx] if idx < len(positions) else [],
+                    dtype=np.float32,
+                )
+                rebuilt[agent] = {
+                    "position": pos_raw,
+                    "proximity": prox_raw
+                }
             obs_dict = rebuilt  # normalized legacy-like dict
 
         decoded = {}
         for agent, obs in obs_dict.items():
             prox_raw = np.array(obs.get("proximity", []), dtype=np.float32)
-            # FUP-03: Validate length (FootBot proximity sensor typically 24 readings)
+            pos_raw = np.array(obs.get("position", []), dtype=np.float32)
+
             if prox_raw.shape != (24,):
                 # Length differs: pad/truncate and flag (later: logging)
                 self.logger.warn(
@@ -314,7 +325,23 @@ class ArgosEnv(ParallelEnv):
                 max_val = np.max(np.abs(prox_raw))
                 if max_val > 0:
                     prox_raw = prox_raw / max_val
-            decoded[agent] = {"proximity": prox_raw}
+
+            # Position: enforce length 3 (pad/truncate)
+            if pos_raw.shape != (3,):
+                if pos_raw.size < 3:
+                    pos_raw = np.pad(
+                        pos_raw,
+                        (0, 3 - pos_raw.size),
+                        mode="constant",
+                        constant_values=0.0,
+                    )
+                else:
+                    pos_raw = pos_raw[:3]
+
+            decoded[agent] = {
+                "position": pos_raw,
+                "proximity": prox_raw
+            }
         return decoded
 
     def validate_observation_spaces(self):
@@ -324,6 +351,9 @@ class ArgosEnv(ParallelEnv):
         dummy, _ = self.reset()
         for agent, obs in dummy.items():
             space = self.observation_space(agent)
+            assert "position" in obs, "Missing 'position' key in observation"
+            pos = obs["position"]
+            assert pos.shape == (3,), f"Position shape mismatch: {pos.shape}"
             assert "proximity" in obs, "Missing 'proximity' key in observation"
             prox = obs["proximity"]
             assert prox.shape == (24,), f"Proximity shape mismatch: {prox.shape}"
