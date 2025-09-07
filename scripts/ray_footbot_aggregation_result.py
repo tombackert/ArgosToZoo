@@ -8,13 +8,14 @@ from ray.rllib.algorithms.ppo import PPO
 from zoo.argos_env import ArgosEnv
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.tune.registry import register_env
+from zoo.scenarios.aggregation import aggregation_reward
 
 
 """
+Usage example:
+
 PYTHONPATH=src python scripts/ray_footbot_aggregation_result.py --checkpoint-path ~/ray_results/argos_aggregation_v0/PPO_ARGOS_AGGREGATION/PPO_argos_aggregation_v0_1fc8c_00000_0_2025-09-08_00-15-12/checkpoint_000011 --episodes 1 --sleep 0.02
 
-
-/Users/tom.backert/ray_results/argos_aggregation_v0/PPO_ARGOS_AGGREGATION/PPO_argos_aggregation_v0_1fc8c_00000_0_2025-09-08_00-15-12/checkpoint_000011
 """
 
 
@@ -33,8 +34,8 @@ def env_creator():
     env = ArgosEnv(
         argos_file=argos_file,
         expected_num_agents=expected_agents,
-        max_steps=4000,
-        reward_fn=None,          
+        max_steps=400,
+        reward_fn=aggregation_reward,          
         quiet=False,
         controller_log_level="WARN",
         loop_log_level="WARN",
@@ -77,27 +78,26 @@ def main():
             ep_reward = 0.0
 
             while True:
-                # Aktionen für alle noch aktiven Agenten berechnen
+                
                 actions = {}
                 for a, o in obs.items():
                     if not (done_t.get(a, False) or done_x.get(a, False)):
-                        # Standardmäßig wurden alle Agents auf "default_policy" gemappt
+                       
                         act = PPOagent.compute_single_action(o, policy_id="default_policy", explore=False)
                         actions[a] = act
 
                 obs, rewards, terminations, truncations, infos = env.step(actions)
 
-                # Reward summieren (optional)
+                # Sum reward 
                 if rewards:
                     ep_reward += sum(rewards.values())
 
-                # Done-Flags aktualisieren
+
                 for a, v in terminations.items():
                     done_t[a] = v or done_t.get(a, False)
                 for a, v in truncations.items():
                     done_x[a] = v or done_x.get(a, False)
 
-                # Ende, wenn alle fertig
                 if all(
                     done_t.get(a, False) or done_x.get(a, False) for a in env.agents
                 ):
