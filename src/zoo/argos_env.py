@@ -5,6 +5,8 @@ import time
 import numpy as np
 import tempfile
 import os
+import socket
+import shutil
 import xml.etree.ElementTree as ET
 from pettingzoo import ParallelEnv
 from gymnasium.spaces import Box, Dict, Discrete  # space Dict
@@ -35,6 +37,10 @@ class ArgosEnv(ParallelEnv):
                 Tuple[float, Optional[TDict[str, float]], TDict[str, Any]],
             ]
         ] = None,
+        # Dynamic ZMQ port configuration
+        port: Optional[int] = None,
+        port_base: int = 5555,
+        port_env_vars: Tuple[str, ...] = ("ARGOS_ZMQ_PORT", "ZOO_ZMQ_PORT", "ZMQ_PORT"),
         **kwargs: Any,
     ):
         """ARGoS ParallelEnv wrapper.
@@ -78,7 +84,12 @@ class ArgosEnv(ParallelEnv):
 
         # Core config
         self.argos_file_path = os.path.abspath(argos_file)
-        self._active_config_path = argos_file
+        # Always work with absolute path (Ray workers may change CWD)
+        self._active_config_path = self.argos_file_path
+        if not os.path.exists(self._active_config_path):
+            raise FileNotFoundError(
+                f"ARGoS config not found: {self._active_config_path}"
+            )
         self._expected_num_agents = expected_num_agents
         self._max_steps = int(max_steps)
         self.timestep = 0
@@ -91,6 +102,12 @@ class ArgosEnv(ParallelEnv):
         self._shutting_down = False
         self._last_positions = (
             None  # positions from latest raw reply (list[list[float]])
+        )
+        # Dynamic port selection
+        self._port_env_vars = tuple(port_env_vars)
+        self._port_base = int(os.environ.get("ARGOS_ZMQ_PORT_BASE", str(port_base)))
+        self._port = (
+            int(port) if port is not None else self._pick_free_port(self._port_base)
         )
 
         # Agent discovery state
@@ -106,6 +123,10 @@ class ArgosEnv(ParallelEnv):
 
         # Simulator startup
         self._startup_delay = startup_delay
+        # Optionally write a temp config with injected port attributes (best effort)
+        self._active_config_path = self._create_temp_config_with_port(
+            self._active_config_path, self._port
+        )
         self._launch_simulator()
         self.logger.debug("Simulator launched", config=self._active_config_path)
 
@@ -215,7 +236,7 @@ class ArgosEnv(ParallelEnv):
             self._last_positions = obs_block.get("position", [])
         observations = self._decode_observations(obs_block)
 
-        #print(f"Positions: {observations["robot_0"]["position"]} | Proximity: {observations["robot_0"]["proximity"]}")  # Debug print
+        # print(f"Positions: {observations["robot_0"]["position"]} | Proximity: {observations["robot_0"]["proximity"]}")  # Debug print
 
         metrics: TDict[str, Any] = {}
         team_reward = 0.0
@@ -295,10 +316,7 @@ class ArgosEnv(ParallelEnv):
                     positions[idx] if idx < len(positions) else [],
                     dtype=np.float32,
                 )
-                rebuilt[agent] = {
-                    "position": pos_raw,
-                    "proximity": prox_raw
-                }
+                rebuilt[agent] = {"position": pos_raw, "proximity": prox_raw}
             obs_dict = rebuilt  # normalized legacy-like dict
 
         decoded = {}
@@ -338,10 +356,7 @@ class ArgosEnv(ParallelEnv):
                 else:
                     pos_raw = pos_raw[:3]
 
-            decoded[agent] = {
-                "position": pos_raw,
-                "proximity": prox_raw
-            }
+            decoded[agent] = {"position": pos_raw, "proximity": prox_raw}
         return decoded
 
     def validate_observation_spaces(self):
@@ -417,6 +432,9 @@ class ArgosEnv(ParallelEnv):
             env["ARGOS_CONTROLLER_LOG_LEVEL"] = self._controller_log_level
         if self._loop_log_level:
             env["ARGOS_LOOP_LOG_LEVEL"] = self._loop_log_level
+        # Export chosen ZMQ port for C++ side to consume
+        for k in self._port_env_vars:
+            env[k] = str(self._port)
         # No feature flag needed: compact schema is standard
         self.sim_process = subprocess.Popen(
             ["argos3", "-c", self._active_config_path],
@@ -442,7 +460,9 @@ class ArgosEnv(ParallelEnv):
         self._closed = False
         time.sleep(self._startup_delay)
         # Recreate client (new ZMQ server instance in simulator)
-        self.client = ZMQClient(port="5555", timeout_ms=self._client_timeout_ms)
+        self.client = ZMQClient(
+            port=str(self._port), timeout_ms=self._client_timeout_ms
+        )
 
     def _shutdown_simulator(self):
         # Prevent re-entrancy issues if already closed
@@ -504,7 +524,10 @@ class ArgosEnv(ParallelEnv):
             )
             os.close(fd)
             tree.write(tmp_path)
-            self._active_config_path = tmp_path
+            # Also ensure the current port is reflected in the temp config
+            self._active_config_path = self._create_temp_config_with_port(
+                tmp_path, self._port
+            )
         except Exception as e:
             self.logger.warn(
                 "Failed to create seeded config; using original", error=str(e)
@@ -513,3 +536,56 @@ class ArgosEnv(ParallelEnv):
         # Restart simulator
         self._shutdown_simulator()
         self._launch_simulator()
+
+    # ------------------ Port helpers ------------------
+    def _pick_free_port(self, start: int) -> int:
+        """Selects an available TCP port.
+
+        Prefers OS-assigned ephemeral ports; falls back to linear probing from `start`.
+        """
+        # Try OS ephemeral port
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("", 0))
+                return s.getsockname()[1]
+        except Exception:
+            pass
+        # Fallback: probe from start
+        for p in range(start, start + 2000):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(("", p))
+                    return p
+                except OSError:
+                    continue
+        raise RuntimeError("No free TCP port found for ZMQ")
+
+    def _create_temp_config_with_port(self, src_path: str, port: int) -> str:
+        """Copy src .argos to a temp file and attempt to set any plausible ZMQ port attrs to `port`.
+
+        If nothing is changed (no matching attributes), returns the copy path anyway.
+        """
+        # Make a temp copy first
+        fd, tmp_path = tempfile.mkstemp(prefix="argos_cfg_", suffix=".argos")
+        os.close(fd)
+        shutil.copyfile(src_path, tmp_path)
+        try:
+            tree = ET.parse(tmp_path)
+            root = tree.getroot()
+            changed = False
+            cand_attrs = ("port", "zmq_port", "server_port", "rpc_port", "ipc_port")
+            for elem in root.iter():
+                for attr in cand_attrs:
+                    if attr in elem.attrib:
+                        try:
+                            int(elem.attrib[attr])  # numeric-like
+                            elem.set(attr, str(port))
+                            changed = True
+                        except Exception:
+                            continue
+            if changed:
+                tree.write(tmp_path)
+        except Exception:
+            # Keep the copy; C++ may read port from env
+            pass
+        return tmp_path

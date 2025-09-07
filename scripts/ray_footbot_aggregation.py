@@ -66,7 +66,7 @@ if __name__ == "__main__":
                 "expected_num_agents": 10,
             },
         )
-        .env_runners(num_env_runners=1, rollout_fragment_length=128)
+        .env_runners(num_env_runners=4, rollout_fragment_length=128)
         .api_stack(
             enable_rl_module_and_learner=False,
             enable_env_runner_and_connector_v2=False,
