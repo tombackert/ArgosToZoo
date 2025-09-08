@@ -30,14 +30,15 @@ from typing import Dict, Any, Optional, Tuple
 
 def aggregation_reward(
     data: Dict[str, Any],
-    w_coh: float = 1.0,
-    w_col: float = 0.5,
-    w_move: float = 0.05,
+    w_coh: float = 1.5,             # 1.0-2.0
+    w_col: float = 0.5,             # 0.3-0.7
+    w_move: float = 0.05,           # 0.02-0.1
     success_threshold: float = 0.25,
     success_hold: int = 20,
+    w_cent_dir: float = 0.2,        # 0.1-0.3
 ) -> Tuple[float, Optional[Dict[str, float]], Dict[str, Any]]:
     agents = data.get("agents", [])
-    positions = data.get("positions")  # np.ndarray or None
+    positions = data.get("positions")
     proximities: Dict[str, np.ndarray] = data.get("proximities", {})
     prev: Dict[str, Any] = data.get("prev", {})
     first_step: bool = bool(data.get("first_step", False))
@@ -67,6 +68,22 @@ def aggregation_reward(
             np.linalg.norm(positions[:, :2] - prev_pos[:, :2], axis=1).mean()
         )
 
+    # Directional term towards centroid (mean cosine similarity movement vs target dir)
+    centroid_dir_mean = 0.0
+    if (
+        prev_pos is not None
+        and isinstance(prev_pos, np.ndarray)
+        and prev_pos.shape == positions.shape
+        and not first_step
+    ):
+        target = centroid[None, :2] - positions[:, :2]  # desired direction
+        move = positions[:, :2] - prev_pos[:, :2]  # actual movement
+        t_norm = np.linalg.norm(target, axis=1)
+        m_norm = np.linalg.norm(move, axis=1)
+        denom = (t_norm * m_norm) + 1e-6
+        cos = np.sum(move * target, axis=1) / denom  # [-1, 1]
+        centroid_dir_mean = float(np.mean(cos))
+
     # Collision proxy
     max_prox = 0.0
     for a in agents:
@@ -87,7 +104,12 @@ def aggregation_reward(
     if first_step:
         reward = 0.0
     else:
-        reward = w_coh * delta_coh - w_col * max_prox + w_move * moved_mean
+        reward = (
+            w_coh * delta_coh
+            - w_col * max_prox
+            + w_move * moved_mean
+            + w_cent_dir * centroid_dir_mean
+        )
 
     # Persist state
     prev["prev_cohesion"] = cohesion
@@ -103,8 +125,12 @@ def aggregation_reward(
             "max_prox": max_prox,
             "success": success,
             "reward": float(reward),
+            "centroid_dir_mean": centroid_dir_mean,
         }
     )
+
+    #print(f"Centroid: {metrics['centroid']}, Delta-Cohesion: {delta_coh:.3f}, Centroid-Dir: {centroid_dir_mean:.3f}, Max-Prox: {max_prox:.3f}, Moved-Mean: {moved_mean:.3f} => Reward: {reward:.3f}")
+
     return float(reward), None, metrics
 
 

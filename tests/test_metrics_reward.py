@@ -129,3 +129,135 @@ def test_collision_penalty():
         w_move=0.0,
     )
     assert r_high <= 0.0 or m_high["reward"] <= 0.0
+
+
+def test_centroid_direction_shaping():
+    """Moving towards centroid yields higher reward than moving away when isolating w_cent_dir."""
+    state = {}
+    # Two agents symmetric around origin on x-axis
+    prev_pos = np.array([[1.0, 0.0, 0.0], [-1.0, 0.0, 0.0]], dtype=float)
+    agents = ["robot_0", "robot_1"]
+
+    # Initialize cache with first step (no reward)
+    aggregation_reward(
+        {
+            "step": 0,
+            "agents": agents,
+            "positions": prev_pos,
+            "proximities": {a: np.zeros(24, dtype=np.float32) for a in agents},
+            "prev": state,
+            "first_step": True,
+        }
+    )
+
+    # Step 1: move both agents 0.1 towards centroid -> cosine ~ +1
+    towards = np.array([[0.9, 0.0, 0.0], [-0.9, 0.0, 0.0]], dtype=float)
+    r_towards, _, m_towards = aggregation_reward(
+        {
+            "step": 1,
+            "agents": agents,
+            "positions": towards,
+            "proximities": {a: np.zeros(24, dtype=np.float32) for a in agents},
+            "prev": state,
+            "first_step": False,
+        },
+        w_coh=0.0,
+        w_col=0.0,
+        w_move=0.0,
+        w_cent_dir=1.0,
+    )
+    assert m_towards["centroid_dir_mean"] > 0.5
+    assert r_towards > 0.0
+
+    # Step 2: move away from centroid -> cosine ~ -1
+    away = np.array([[1.1, 0.0, 0.0], [-1.1, 0.0, 0.0]], dtype=float)
+    r_away, _, m_away = aggregation_reward(
+        {
+            "step": 2,
+            "agents": agents,
+            "positions": away,
+            "proximities": {a: np.zeros(24, dtype=np.float32) for a in agents},
+            "prev": state,
+            "first_step": False,
+        },
+        w_coh=0.0,
+        w_col=0.0,
+        w_move=0.0,
+        w_cent_dir=1.0,
+    )
+    assert m_away["centroid_dir_mean"] < -0.5
+    assert r_away < 0.0
+
+
+def test_moved_mean_shaping_isolated():
+    """With only w_move active, reward equals w_move * mean displacement."""
+    state = {}
+    prev_pos = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=float)
+    agents = ["robot_0", "robot_1"]
+
+    aggregation_reward(
+        {
+            "step": 0,
+            "agents": agents,
+            "positions": prev_pos,
+            "proximities": {a: np.zeros(24, dtype=np.float32) for a in agents},
+            "prev": state,
+            "first_step": True,
+        }
+    )
+
+    curr = np.array([[0.1, 0.0, 0.0], [1.1, 0.0, 0.0]], dtype=float)
+    r, _, m = aggregation_reward(
+        {
+            "step": 1,
+            "agents": agents,
+            "positions": curr,
+            "proximities": {a: np.zeros(24, dtype=np.float32) for a in agents},
+            "prev": state,
+            "first_step": False,
+        },
+        w_coh=0.0,
+        w_col=0.0,
+        w_move=1.0,
+        w_cent_dir=0.0,
+    )
+    # Mean displacement is 0.1 for both -> reward ~= 0.1
+    assert pytest.approx(m["moved_mean"], rel=1e-5, abs=1e-6) == 0.1
+    assert pytest.approx(r, rel=1e-5, abs=1e-6) == 0.1
+
+
+def test_first_step_always_zero_reward():
+    state = {}
+    positions = np.array([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]], dtype=float)
+    agents = ["robot_0", "robot_1"]
+    r, _, m = aggregation_reward(
+        {
+            "step": 0,
+            "agents": agents,
+            "positions": positions,
+            "proximities": {a: np.zeros(24, dtype=np.float32) for a in agents},
+            "prev": state,
+            "first_step": True,
+        },
+        w_coh=10.0,
+        w_col=10.0,
+        w_move=10.0,
+        w_cent_dir=10.0,
+    )
+    assert m["reward"] == 0.0 and r == 0.0
+
+
+def test_no_positions_returns_zero():
+    state = {}
+    agents = ["robot_0", "robot_1"]
+    r, _, m = aggregation_reward(
+        {
+            "step": 0,
+            "agents": agents,
+            "positions": None,
+            "proximities": {a: np.zeros(24, dtype=np.float32) for a in agents},
+            "prev": state,
+            "first_step": True,
+        }
+    )
+    assert r == 0.0 and m.get("reward", None) == 0.0
