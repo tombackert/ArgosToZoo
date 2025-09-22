@@ -84,7 +84,7 @@ def main():
             obs, info = env.reset(seed=ep_seed)
             rewards = run_episode(env, args.steps, rng)
             mean_per_agent = sum(rewards.values()) / max(len(rewards), 1)
-            
+
             # Debug info for first agent
             print(f"Metrics robot_0: {info['robot_0']}")
             print(

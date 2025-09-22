@@ -11,7 +11,6 @@ from ray.tune.registry import register_env
 from zoo.scenarios.aggregation import aggregation_reward
 
 
-
 """
 Usage example:
 
@@ -88,20 +87,18 @@ def main():
             ep_reward = 0.0
 
             while True:
-                
                 actions = {}
                 for a, o in obs.items():
                     if not (done_t.get(a, False) or done_x.get(a, False)):
-                       
+
                         act = PPOagent.compute_single_action(o, policy_id="default_policy", explore=False)
                         actions[a] = act
 
                 obs, rewards, terminations, truncations, infos = env.step(actions)
 
-                # Sum reward 
+                # Sum reward
                 if rewards:
                     ep_reward += sum(rewards.values())
-
 
                 for a, v in terminations.items():
                     done_t[a] = v or done_t.get(a, False)
@@ -116,7 +113,7 @@ def main():
                 if args.sleep > 0:
                     time.sleep(args.sleep)
 
-            print(f"Episode {ep+1}: return_sum={ep_reward:.3f}")
+            print(f"Episode {ep + 1}: return_sum={ep_reward:.3f}")
 
     finally:
         env.close()

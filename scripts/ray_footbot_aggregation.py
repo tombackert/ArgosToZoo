@@ -1,12 +1,6 @@
 import os
-import warnings
 
 import torch
-import torch.nn as nn
-
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.models import ModelCatalog
-from ray.rllib.utils.torch_utils import FLOAT_MIN
 
 import ray
 from ray import tune
@@ -24,7 +18,7 @@ Script to train aggregation with Ray RLlib PPO.
 
 
 Usage:
-PYTHONPATH=src python scripts/ray_footbot_aggregation.py   
+PYTHONPATH=src python scripts/ray_footbot_aggregation.py
 
 
 Monitor training with:
@@ -32,7 +26,7 @@ Monitor training with:
 Run0:
 tensorboard --logdir /tmp/ray/session_2025-09-08_15-19-31_320837_42619/artifacts/2025-09-08_15-19-32/PPO_ARGOS_AGGREGATION/driver_artifacts
 
-Run1: 
+Run1:
 tensorboard --logdir /tmp/ray/session_2025-09-08_19-13-28_937159_7014/artifacts/2025-09-08_19-13-30/PPO_ARGOS_AGGREGATION/driver_artifacts
 """
 
