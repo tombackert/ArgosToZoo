@@ -11,17 +11,27 @@ from ray.tune.registry import register_env
 from zoo.scenarios.aggregation import aggregation_reward
 
 
+
 """
 Usage example:
 
-PYTHONPATH=src python scripts/ray_footbot_aggregation_result.py --checkpoint-path ~/ray_results/argos_aggregation_v0/PPO_ARGOS_AGGREGATION/PPO_argos_aggregation_v0_1fc8c_00000_0_2025-09-08_00-15-12/checkpoint_000011 --episodes 1 --sleep 0.02
+First Run:
+PYTHONPATH=src python scripts/ray_footbot_aggregation_result.py --checkpoint-path ~/ray_results/argos_aggregation_v0/PPO_ARGOS_AGGREGATION/PPO_argos_aggregation_v0_752ba_00000_0_2025-09-08_15-19-32/checkpoint_000011 --episodes 1 --sleep 0.02
 
+Second Run:
+PYTHONPATH=src python scripts/ray_footbot_aggregation_result.py --checkpoint-path ~/ray_results/argos_aggregation_v1/PPO_ARGOS_AGGREGATION/PPO_argos_aggregation_v1_4aeb6_00000_0_2025-09-08_20-04-41/checkpoint_000003 --episodes 1 --sleep 0.02
+
+Third Run:
+PYTHONPATH=src python scripts/ray_footbot_aggregation_result.py --checkpoint-path ~/ray_results/argos_aggregation_v2/PPO_ARGOS_AGGREGATION/PPO_argos_aggregation_v2_b119c_00000_0_2025-09-09_00-46-43/checkpoint_000000 --episodes 1 --sleep 0.02
+
+PYTHONPATH=src python scripts/ray_footbot_aggregation_result.py --checkpoint-path ~/ray_results/argos_aggregation_v4/PPO_ARGOS_AGGREGATION/PPO_argos_aggregation_v4_e94aa_00000_0_2025-09-09_12-29-48/checkpoint_000001 --episodes 1 --sleep 0.02
 """
 
 
 def env_creator():
 
     argos_file = "experiments/visual/footbot_10_vis.argos"
+
     expected_agents = 10
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -34,8 +44,8 @@ def env_creator():
     env = ArgosEnv(
         argos_file=argos_file,
         expected_num_agents=expected_agents,
-        max_steps=400,
-        reward_fn=aggregation_reward,          
+        max_steps=4000,
+        reward_fn=aggregation_reward,
         quiet=False,
         controller_log_level="WARN",
         loop_log_level="WARN",
@@ -63,7 +73,7 @@ def main():
     checkpoint_path = os.path.expanduser(args.checkpoint_path)
 
     env = env_creator()
-    env_name = "argos_aggregation_v0"
+    env_name = "argos_aggregation_v2"
     register_env(env_name, lambda config: ParallelPettingZooEnv(env_creator()))
 
     ray.init()

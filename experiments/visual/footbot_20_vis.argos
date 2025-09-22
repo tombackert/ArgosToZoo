@@ -2,7 +2,7 @@
 <argos-configuration>
   <framework>
     <system threads="0" />
-  <experiment length="0" ticks_per_second="20" random_seed="123" />
+  <experiment length="0" ticks_per_second="40" random_seed="123" />
   </framework>
     <controllers>
       <my_ipc_controller id="ipc" library="build/src/plugin/controllers/libmy_ipc_controller.dylib">
@@ -10,7 +10,7 @@
           <differential_steering implementation="default" />
         </actuators>
         <sensors>
-          <footbot_proximity implementation="default" show_rays="false" />
+          <footbot_proximity implementation="default" show_rays="true" />
         </sensors>
         <params />
       </my_ipc_controller>

@@ -71,13 +71,13 @@ void CMyIPCController::ControlStep() {
         m_sLastAppliedAction = m_sCurrentAction;
     }
     if (m_sCurrentAction == "left_speed") {
-        m_pcWheels->SetLinearVelocity(-5.0f, 5.0f);  // left
+        m_pcWheels->SetLinearVelocity(-20.0f, 20.0f);  // left
     } else if (m_sCurrentAction == "right_speed") {
-        m_pcWheels->SetLinearVelocity(5.0f, -5.0f);  // right
+        m_pcWheels->SetLinearVelocity(20.0f, -20.0f);  // right
     } else if (m_sCurrentAction == "forward_speed") {
-        m_pcWheels->SetLinearVelocity(5.0f, 5.0f);  // forward
+        m_pcWheels->SetLinearVelocity(20.0f, 20.0f);  // forward
     } else if (m_sCurrentAction == "backward_speed") {
-        m_pcWheels->SetLinearVelocity(-5.0f, -5.0f);  // backward
+        m_pcWheels->SetLinearVelocity(-20.0f, -20.0f);  // backward
     } else if (m_sCurrentAction == "stop") {
         m_pcWheels->SetLinearVelocity(0.0f, 0.0f);  // stop
     } else {

@@ -236,8 +236,6 @@ class ArgosEnv(ParallelEnv):
             self._last_positions = obs_block.get("position", [])
         observations = self._decode_observations(obs_block)
 
-        # print(f"Positions: {observations["robot_0"]["position"]} | Proximity: {observations["robot_0"]["proximity"]}")  # Debug print
-
         metrics: TDict[str, Any] = {}
         team_reward = 0.0
         per_agent: Optional[TDict[str, float]] = None
