@@ -1,7 +1,7 @@
 name: Integration CI
 
 on:
-  push:
+  pull_request:
     branches:
       - main
 
@@ -65,8 +65,11 @@ jobs:
           cd build
           cmake -DCMAKE_CXX_STANDARD=17 ../src
           make -j$(sysctl -n hw.ncpu)
+          # Ensure docs (some versions expect doc targets before install)
+          make doc || echo "Doc build failed (non-fatal)"
           sudo make install
-          which argos3
+          which argos3 || (echo "argos3 not on PATH after install" && exit 1)
+          argos3 -q version || echo "Version query failed (check install)"
 
       - name: Cache pip
         uses: actions/cache@v4

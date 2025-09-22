@@ -40,7 +40,7 @@ def main():
         loop_log_level=args.loop_log_level,
         controller_log_level=args.controller_log_level,
         reward_fn=reward_fn,
-        quiet=(args.log_level.upper() == "ERROR"),
+        quiet=(args.log_level.upper() == "DEBUG"),
     )
 
     try:

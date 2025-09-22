@@ -64,8 +64,26 @@ void CZooLoopFunctions::Init(TConfigurationNode& t_node) {
     int recv_timeout = -1;  // blocking read
     m_ptZmqSocket->set(zmq::sockopt::rcvtimeo, recv_timeout);
     try {
-        m_ptZmqSocket->bind("tcp://*:5555");
-        LoopLog(ELogLevel::INFO, "ZMQ server bound to tcp://*:5555");
+        // Determine port from XML attribute or environment variables
+        int port = 5555;
+        try {
+            // Try attribute on <loop_functions> or parent nodes
+            if (NodeAttributeExists(t_node, "port")) {
+                GetNodeAttribute(t_node, "port", port);
+            } else if (std::getenv("ARGOS_ZMQ_PORT")) {
+                port = std::atoi(std::getenv("ARGOS_ZMQ_PORT"));
+            } else if (std::getenv("ZOO_ZMQ_PORT")) {
+                port = std::atoi(std::getenv("ZOO_ZMQ_PORT"));
+            } else if (std::getenv("ZMQ_PORT")) {
+                port = std::atoi(std::getenv("ZMQ_PORT"));
+            }
+        } catch (...) {
+            // keep default
+        }
+        std::string endpoint = std::string("tcp://*:") + std::to_string(port);
+        m_ptZmqSocket->bind(endpoint);
+        LoopLog(ELogLevel::INFO,
+                std::string("ZMQ server bound to ") + endpoint);
         LoopLog(ELogLevel::INFO,
                 "Waiting for initial connection from Python client...");
     } catch (zmq::error_t& ex) {
