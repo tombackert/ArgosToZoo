@@ -173,7 +173,8 @@ def test_centroid_direction_shaping():
 
 
 def test_moved_mean_positive_when_agents_move():
-    """Movement should contribute via dist / alignment; verify mean speed metric > 0 and reward non-zero."""
+    """Movement should contribute via dist / alignment;
+    verify mean speed metric > 0 and reward non-zero."""
     state = {}
     prev_pos = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=float)
     agents = ["robot_0", "robot_1"]
