@@ -1,3 +1,5 @@
+[Home](README.md) | [Concept](docs/concept.md) | [Architecture](docs/architecture.md) | [How to Run](docs/how-to-run.md) | [Tests](docs/tests.md) | [Logging](logging.md) | [Project Management](docs/project-management.md) | [Resources](docs/resources.md) | [Results](docs/results.md) | [To be Done](docs/things-to-be-done.md)
+
 # ArgosToZoo
 
 High‑performance bridge between the [ARGoS](https://www.argos-sim.info) swarm robotics simulator (C++) and modern Multi‑Agent RL tooling in Python (PettingZoo).
@@ -6,17 +8,19 @@ High‑performance bridge between the [ARGoS](https://www.argos-sim.info) swarm 
 
 > Proof of concept: Run a 10 agents aggregation scenario. 
 
-## Quick Links (Documentation Hub)
+## Documentation Hub
 
 | Topic |
 |-------|
-| [Concept / Vision](docs/concept.md) | 
-| [Architecture & Developer Guide](docs/how-to-run.md) |
-| [How to Run (Setup & E2E)](docs/how-to-run.md) |
-| [Logging (Python & C++)](docs/logging.md) |
+| [Vision](docs/concept.md) | 
+| [Architecture](docs/how-to-run.md) |
+| [How to Run](docs/how-to-run.md) |
+| [Logging](docs/logging.md) |
 | [Tests & CI](docs/tests.md) |
 | [Project Management](docs/project-management.md) |
 | [Resources](docs/resources.md) |
+| [Results](docs/results.md) |
+| [To be Done](docs/things-to-be-done.md) |
 
 ## Overview
 
@@ -27,46 +31,24 @@ High‑performance bridge between the [ARGoS](https://www.argos-sim.info) swarm 
 | Observation Schema | Compact array format (`compact_v1`) with proximity (24) + positions (no rewards in wire payload) |
 | Reward Shaping | External `reward_fn` callback (e.g. `aggregation_reward`); default env reward is constant 0.0 |
 | Determinism | One simulator tick per `env.step()`; seeding restarts ARGoS with fixed seed |
-| Scaling Proven | Benchmarked up to 20 agents with constant latency (~50ms @ 20Hz tick) |
+| Scaling Proven | Benchmarked up to 50 agents with constant latency (~50ms @ 20Hz tick) |
 
-See the architecture doc for rationale, extensibility model, and performance table.
+See the *architecture* doc for rationale, extensibility model, and performance table.
+For full setup, multi‑episode random policy, and RL smoke test refer to *How to run* section.
 
-## 60‑Second Quick Start (macOS)
-
-```bash
-# deps (abbrev) – full list in docs/how-to-run.md
-brew install pkg-config cmake zeromq cppzmq libpng freeimage qt freeglut lua docbook asciidoc graphviz doxygen clang-format
-pip install -r requirements.txt
-
-# build plugin
-rm -rf build && mkdir build && cd build && cmake .. && make -j$(sysctl -n hw.ncpu) && cd ..
-
-# smoke test (5 agents, 3 steps)
-PYTHONPATH=src python - <<'PY'
-from zoo.argos_env import ArgosEnv
-env = ArgosEnv('experiments/footbot_10.argos', loop_log_level='WARN', controller_log_level='ERROR')
-obs, info = env.reset(seed=0)
-for _ in range(3):
-    obs, rew, term, trunc, info = env.step({a:0 for a in env.agents})
-    print({a: float(rew[a]) for a in rew})
-env.close()
-PY
-```
-
-For full setup, multi‑episode random policy, and RL smoke test refer to `docs/how-to-run.md`.
-
-## Repository Map (Essentials)
+## Repository Map
 
 ```
 src/plugin/        # C++ ARGoS controller + loop functions (ZeroMQ REP server)
 src/zoo/           # Python PettingZoo parallel env + ZMQ client
+src/zoo/scenarios  # Reward functions for training
 experiments/       # .argos scenario files (1,5,10,20 foot-bots)
 scripts/           # Utilities: random_policy, rl_smoke, manual_control
 tests/             # Pytest suite: API, seeding, reward variance, recovery, shutdown
 docs/              # Modular documentation (see links above)
 ```
 
-## Contributing (Short Form)
+## Contributing to this project
 
 1. Branch: `git checkout -b feature/<name>`
 2. Add/adjust tests first (see `docs/tests.md`).
@@ -84,58 +66,5 @@ ARGoS paper, PettingZoo API, RLlib multi-agent docs, ZeroMQ guide, and relevant 
 
 This repository forms the foundation for a bachelor thesis; architectural and experimental changes should keep the docs in sync to preserve academic reproducibility (update affected doc section in same PR).
 
----
-
 For deep dives start with: Concept → Architecture → How to Run → Tests → Logging.
-
-### Aggregation Metrics (M3-02)
-Metrics are computed in Python (not part of observations) and surfaced each step in `infos[agent]['metrics']`:
-
-| Metric | Meaning |
-|--------|---------|
-| `centroid` | `[x,y,z]` centroid of all robot positions |
-| `cohesion_mean` | Mean distance to centroid (aggregation radius) |
-| `delta_cohesion` | Previous cohesion_mean minus current (improvement > 0) |
-| `moved_mean` | Mean per-agent XY distance moved since last step |
-| `max_prox` | Maximum proximity reading across all agents (collision proxy) |
-| `polarization` | Placeholder (0.0; future heading alignment) |
-| `success` | True after cohesion_mean < 0.25 for 20 consecutive steps |
-
-Aggregation reference formula (implemented in `zoo/scenarios/aggregation.py`): `r = w_coh*Δcohesion - w_col*max_prox + w_move*moved_mean` (first step forced 0.0). These weights are function arguments, not environment constructor params. Provide the callback via `ArgosEnv(..., reward_fn=aggregation_reward)`.
-
-
-## Scenario
-
-The new headless training scenario for aggregation experiments lives at `experiments/footbot_10.argos`.
-
-Key properties:
-
-* 10 Foot-Bots in a 6m x 6m arena, tick rate = 20 Hz.
-* Initial poses are randomized **inside the loop functions** with a minimum center-to-center spacing of 0.2 m (attempts up to 500 trials per robot before giving up — remaining robots retain template positions if packing fails).
-* Randomization is **deterministic**: the ARGoS `<experiment random_seed=...>` together with the internal RNG drives placement. Resetting the environment with the same seed reproduces identical layouts.
-* Headless (no `<visualization>` block) for faster RL training throughput.
-
-### Seeding & Determinism (How It Works)
-
-Deterministic layouts require controlling *both* the ARGoS world RNG and the Python-side RNG used in experiments.
-
-Pipeline when you call `env.reset(seed=S)`:
-
-1. A temporary copy of the original `.argos` file is created with `<experiment random_seed="S"/>`.
-2. The ARGoS simulator process is **restarted** with that temp file (always, even if the same seed is reused, to guarantee a clean RNG state).  
-3. Inside `CZooLoopFunctions::Init()` (and again on reset) we call `RandomizeStartPositions()`, which samples positions & orientations via `CRandom::CreateRNG("argos")`. Because ARGoS was seeded with `S`, the sampled sequence is identical for identical `S`.
-4. Minimum center-to-center separation constraint: candidates rejected if distance < 0.2 m; up to 500 trials per robot. (If packing fails late, remaining robots keep the placeholder grid position—rare at this density.)
-5. Python sets `env.np_random = default_rng(S)` for any downstream stochastic policies you write.
-
-Important nuances:
-
-* Calling `reset()` **without a seed** does NOT restart the process; the placement will be re-randomized using the *continuing* RNG stream (different layout). Provide the seed every episode you want reproduced.
-* Identical seed → identical ordered list of robot positions and orientations; reward & observation trajectories remain identical for a deterministic policy.
-* Change the seed → new layout; all else constant.
-
-Quick reproducibility check (run twice, identical output expected):
-
-```bash
-PYTHONPATH=src python scripts/run_footbot10.py --seed 123 --steps 1
-```
 
