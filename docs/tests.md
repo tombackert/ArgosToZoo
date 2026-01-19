@@ -1,4 +1,4 @@
-[Home](../README.md) | [Concept](concept.md) | [Architecture](architecture.md) | [How to Run](how-to-run.md) | [Tests](tests.md) | [Logging](logging.md) | [Project Management](project-management.md) | [Resources](resources.md)
+[Home](../README.md) | [Concept](concept.md) | [Architecture](architecture.md) | [How to Run](how-to-run.md) | [Tests](tests.md) | [Logging](logging.md) | [Project Management](project-management.md) | [Resources](resources.md) | [Results](results.md) | [Backlog](backlog.md)
 
 # Test & CI Documentation
 
@@ -18,12 +18,14 @@ This document enumerates the automated tests, their intent, and the CI pipeline 
 |------|-------|----------------|
 | `test_env.py` | Core env behavior | Reset/step lifecycle; observation shapes; action validation |
 | `test_parallel_api.py` | PettingZoo compliance | Passes `parallel_api_test` semantics (agents list clearing, trunc/term mapping) |
+| `test_metrics_reward.py` | Reward function unit tests | Aggregation reward callback correctness; metric computation |
 | `test_reward_variance.py` | Shaping variability | Variance > 0 over sampled steps (guards regression to constant reward) |
-| `test_seed_restart.py` | Determinism & reseeding | Same seed → identical reward sequence; different seed → divergence after some steps |
+| `test_seed_layout.py` | Determinism & reseeding | Same seed → identical positions; different seed → different layout |
+| `test_seed_positions_multi.py` | Multi-agent seed positions | Position reproducibility across multiple agents |
 | `test_timeout_recovery.py` | ZMQ recovery | Induced timeout triggers reconnect then successful further steps |
 | `test_graceful_shutdown.py` | Resource cleanup | Multiple `close()` idempotent; no zombie subprocess detected |
 | `test_logging.py` | Logging surface | Level filtering and JSON/text formatting basic sanity |
-| `test_example.py` (if present) | Legacy / smoke | Backwards compatibility quick check |
+| `test_legacy_removal.py` | API cleanup | Removed legacy parameters raise appropriate errors |
 
 All tests are intentionally lightweight; heavy performance benchmarks live in scripts.
 
@@ -46,7 +48,7 @@ python -m pettingzoo.test.parallel_api_test zoo.argos_env:ArgosEnv
 
 ## Seeding Contract
 
-`env.reset(seed=s)` restarts ARGoS when the underlying simulator requires a fresh process to apply a new random seed. Determinism guarantee: same seed + identical action sequence → identical reward/observation tensors for N steps (floating point tolerance). Covered by `test_seed_restart.py`.
+`env.reset(seed=s)` restarts ARGoS when the underlying simulator requires a fresh process to apply a new random seed. Determinism guarantee: same seed + identical action sequence → identical reward/observation tensors for N steps (floating point tolerance). Covered by `test_seed_layout.py` and `test_seed_positions_multi.py`.
 
 ## Timeout & Recovery
 
@@ -82,20 +84,22 @@ pytest -q
 
 ### Linting
 
-`flake8` enforces Python style; C++ formatting via `clang-format` (fail if diff). 
+- `flake8` enforces Python style
+- C++ formatting via `clang-format`
 
 #### C++
-Run for lint-checking one file:
+Run for lint-checking a file:
 ```
 clang-format -n --Werror src/plugin/loop_functions/zoo_loop_functions.cpp
 ```
 
-Run for auto-fix one file:
+Run for auto-fix a file:
 ```
 clang-format -i src/plugin/loop_functions/zoo_loop_functions.cpp
 ```
 
 #### Python
+Lint-check a specific file:
 ```
 flake8 src/zoo/argos_env.py
 ```
@@ -103,7 +107,7 @@ flake8 src/zoo/argos_env.py
 #### Pre Commit 
 Run locally before committing:
 ```bash
-flake8 src/zoo
+flake8 src/zoo scripts tests
 clang-format -i $(git ls-files 'src/plugin/loop_functions/*.[ch]pp' 'src/plugin/loop_functions/*.[ch]' 'src/plugin/controllers/*.[ch]pp' 'src/plugin/controllers/*.[ch]')
 ```
 
@@ -129,5 +133,3 @@ clang-format -i $(git ls-files 'src/plugin/loop_functions/*.[ch]pp' 'src/plugin/
 * Performance regression test (steps/sec across agent counts).
 * Sensor expansion tests (new arrays appended to schema).
 * Optional fuzz test for malformed JSON recovery.
-
-Return to: [Documentation Hub](../README.md).

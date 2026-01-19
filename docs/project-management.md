@@ -1,8 +1,8 @@
-[Home](../README.md) | [Concept](concept.md) | [Architecture](architecture.md) | [How to Run](how-to-run.md) | [Tests](tests.md) | [Logging](logging.md) | [Project Management](project-management.md) | [Resources](resources.md)
+[Home](../README.md) | [Concept](concept.md) | [Architecture](architecture.md) | [How to Run](how-to-run.md) | [Tests](tests.md) | [Logging](logging.md) | [Project Management](project-management.md) | [Resources](resources.md) | [Results](results.md) | [Backlog](backlog.md)
 
 # Project Management
 
-This document documents the organisational steps and milestones in order to reach the end goal of the project.
+This document holds the organisational milestones to reach the end goal of the project.
 
 ## 🏁 Milestones
 
@@ -32,6 +32,3 @@ This document documents the organisational steps and milestones in order to reac
 - **Two-Week Sprints (~25 h):** Plan, review, retrospectives
 - **Definition of Done:** Code compiles, docs updated, example works, issue closed
 - **Meeting Structure:** Bi-weekly reviews & weekly check-ins
-
-
-Return to: [Documentation Hub](../README.md).

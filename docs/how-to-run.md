@@ -1,4 +1,4 @@
-[Home](../README.md) | [Concept](concept.md) | [Architecture](architecture.md) | [How to Run](how-to-run.md) | [Tests](tests.md) | [Logging](logging.md) | [Project Management](project-management.md)
+[Home](../README.md) | [Concept](concept.md) | [Architecture](architecture.md) | [How to Run](how-to-run.md) | [Tests](tests.md) | [Logging](logging.md) | [Project Management](project-management.md) | [Resources](resources.md) | [Results](results.md) | [Backlog](backlog.md)
 
 # How to Run: ARGoS-PettingZoo Bridge
 
@@ -28,18 +28,21 @@ brew install cmake
 Use `pip` inside a virtual environment of your choice:
 
 ```bash
-# Python bindings for ZeroMQ
-pip install pyzmq
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
-# MARL framework (for future integration)
-pip install pettingzoo
+# Install all dependencies
+pip install -r requirements.txt
+
+# Additional dependencies (if not in requirements.txt)
+pip install numpy gymnasium
 ```
 
 ### Manual Dependencies
 
 1. Download the single-header file `json.hpp` from [nlohmann/json releases](https://github.com/nlohmann/json/releases) or `brew install nlohmann/json`.
-2. Create a directory `plugin/common/` in the project root.
-3. Place the `json.hpp` file in this directory.
+2. The file should be placed at `src/plugin/common/json.hpp` (already included in repository).
 
 ## 2. Build the Project
 
@@ -59,28 +62,82 @@ cmake ..
 make
 ```
 
-After successful compilation, you should find `libmy_ipc_controller.dylib` in the `build/controllers/` directory.
+After successful compilation, you should find:
+- `build/src/plugin/controllers/libmy_ipc_controller.dylib`
+- `build/src/plugin/loop_functions/libzoo_loop_functions.dylib`
 
 ## 3. Run the Experiment
 
-The system requires two separate terminal sessions running concurrently. Both terminals must be in the project root (`ArgosToZoo/`).
+There are two ways to run experiments: **Manual Mode** (two terminals) or **Programmatic Mode** (recommended).
 
-### Terminal 1: Start ARGoS Simulator
+### Option A: Programmatic Mode (Recommended)
 
-In this terminal, start the ARGoS simulation. The simulation will load, and the C++ controllers will wait for commands from Python.
-
-```bash
-argos3 -c experiments/test.argos
-```
-
-Robots in the GUI will remain idle until the Python script starts.
-
-### Terminal 2: Start Python Control Script
-
-In this terminal, start the Python client that sends control commands.
+Use the Python environment wrapper which handles simulator lifecycle automatically:
 
 ```bash
-python manual_control.py
+# Activate virtual environment
+source .venv/bin/activate
+
+# Run random policy test
+PYTHONPATH=src python scripts/random_policy.py \
+    --argos experiments/footbot_10.argos \
+    --episodes 2 --steps 50 --seed 42
+
+# Run with visual feedback (requires Qt-OpenGL ARGoS build)
+PYTHONPATH=src python scripts/random_policy.py \
+    --argos experiments/visual/footbot_10_vis.argos \
+    --episodes 1 --steps 100
 ```
 
-After startup, you will be prompted to enter commands. Type `w`, `a`, `s`, `d`, or `stop` and press Enter to control the robots in the ARGoS GUI.
+### Option B: Manual Mode (Two Terminals)
+
+For debugging or manual control, run ARGoS and Python separately.
+
+**Terminal 1: Start ARGoS Simulator**
+
+```bash
+# Headless mode (training)
+argos3 -c experiments/footbot_10.argos
+
+# Or with visualization (debugging)
+argos3 -c experiments/visual/footbot_10_vis.argos
+```
+
+The simulation will load and wait for commands from Python.
+
+**Terminal 2: Start Python Control Script**
+
+```bash
+source .venv/bin/activate
+PYTHONPATH=src python scripts/manual_control.py
+```
+
+After startup, you will be prompted to enter commands. Type `w`, `a`, `s`, `d`, or `stop` and press Enter to control the robots.
+
+## 4. Available Experiment Configurations
+
+| File | Agents | Mode | Description |
+|------|--------|------|-------------|
+| `experiments/footbot_1.argos` | 1 | Headless | Single robot testing |
+| `experiments/footbot_5.argos` | 5 | Headless | Small swarm |
+| `experiments/footbot_10.argos` | 10 | Headless | Default training scenario |
+| `experiments/footbot_20.argos` | 20 | Headless | Larger swarm |
+| `experiments/visual/footbot_*_vis.argos` | Various | Visual | Qt-OpenGL visualization |
+
+## 5. Quick Verification
+
+Run the test suite to verify everything is working:
+
+```bash
+source .venv/bin/activate
+PYTHONPATH=src pytest tests/ -v
+```
+
+## 6. Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `Library not found: libmy_ipc_controller.dylib` | Rebuild: `cd build && make` |
+| `Connection refused` on ZMQ | Ensure ARGoS is running first (manual mode) |
+| `ModuleNotFoundError: zoo` | Set `PYTHONPATH=src` before running Python |
+| Port already in use | Set `ARGOS_ZMQ_PORT=5556` or use `port=` parameter |
