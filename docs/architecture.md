@@ -1,4 +1,4 @@
-[Home](../README.md) | [Concept](concept.md) | [Architecture](architecture.md) | [How to Run](how-to-run.md) | [Tests](tests.md) | [Logging](logging.md) | [Project Management](project-management.md) | [Resources](resources.md)
+[Home](../README.md) | [Concept](concept.md) | [Architecture](architecture.md) | [How to Run](how-to-run.md) | [Tests](tests.md) | [Logging](logging.md) | [Project Management](project-management.md) | [Resources](resources.md) | [Results](results.md) | [Backlog](backlog.md)
 
 # Architecture: ARGoS-PettingZoo Bridge
 
@@ -75,34 +75,74 @@ The repository is organized into the following directories:
 
 ```
 .
-├── CMakeLists.txt          # Main CMake configuration for the C++ plugin
-├── README.md               # Project overview, setup, and usage instructions
-├── build/                  # Compiled C++ binaries and build artifacts (auto-generated)
-├── docs/                   # Documentation, diagrams, and architectural notes
-│   ├── architecture.md     # This file
-│   ├── concept.md          # High-level project concept
-│   └── how-to-run.md       # Detailed setup and execution guide
-├── experiments/            # ARGoS configuration files (.argos) for different scenarios
-│   ├── footbot_1.argos     # Scenario with one robot
-│   └── footbot_10.argos    # Headless aggregation scenario with ten robots
-├── requirements.txt        # Python dependencies
-├── scripts/                # Standalone Python scripts for control and interaction
-│   └── manual_control.py   # Script for manually controlling robots via the terminal
-├── src/                    # Source code for the bridge
-│   ├── plugin/             # C++ ARGoS plugin source
+├── CMakeLists.txt              # Main CMake configuration for the C++ plugin
+├── README.md                   # Project overview, setup, and usage instructions
+├── requirements.txt            # Python dependencies
+├── pytest.ini                  # Pytest configuration
+├── build/                      # Compiled C++ binaries and build artifacts (auto-generated)
+├── docs/                       # Documentation, diagrams, and architectural notes
+│   ├── architecture.md         # This file
+│   ├── concept.md              # High-level project concept
+│   ├── how-to-run.md           # Detailed setup and execution guide
+│   ├── logging.md              # Logging configuration and usage
+│   ├── tests.md                # Testing documentation
+│   ├── resources.md            # External resources and references
+│   ├── project-management.md   # Project management notes
+│   ├── results.md              # Experimental results
+│   └── backlog.md              # Future work and backlog items
+├── experiments/                # ARGoS configuration files (.argos) for different scenarios
+│   ├── footbot_1.argos         # Scenario with one robot
+│   ├── footbot_5.argos         # Scenario with five robots
+│   ├── footbot_10.argos        # Headless aggregation scenario with ten robots
+│   ├── footbot_20.argos        # Scenario with twenty robots
+│   ├── zmq.argos               # ZeroMQ experiment configuration
+│   └── visual/                 # Visual experiment configurations
+│       ├── footbot_1_vis.argos
+│       ├── footbot_5_vis.argos
+│       ├── footbot_10_vis.argos
+│       └── footbot_20_vis.argos
+├── scripts/                    # Standalone Python scripts for control, training, and interaction
+│   ├── manual_control.py       # Script for manually controlling robots via the terminal
+│   ├── random_policy.py        # Random policy driver for sanity checks
+│   ├── rl_smoke.py             # Minimal REINFORCE smoke test for RL compatibility
+│   ├── benchmark_throughput.py # Performance benchmarking script
+│   ├── run_footbot10.py        # Quick run script for 10 footbots
+│   ├── ray_footbot_aggregation.py       # RLlib PPO training for aggregation task
+│   ├── ray_footbot_aggregation_result.py # Result visualization for aggregation training
+│   └── tutorials/              # Tutorial scripts
+│       ├── ray_pistonball.py           # PettingZoo Pistonball tutorial
+│       └── ray_pistonball_result.py    # Pistonball result visualization
+├── src/                        # Source code for the bridge
+│   ├── plugin/                 # C++ ARGoS plugin source
 │   │   ├── CMakeLists.txt
 │   │   ├── common/
-│   │   │   └── json.hpp    # nlohmann/json library for C++ JSON parsing
+│   │   │   └── json.hpp        # nlohmann/json library for C++ JSON parsing
 │   │   ├── controllers/
-│   │   │   ├── my_ipc_controller.cpp # Per-robot controller (wheel & sensor logic)
+│   │   │   ├── CMakeLists.txt
+│   │   │   ├── my_ipc_controller.cpp  # Per-robot controller (wheel & sensor logic)
 │   │   │   └── my_ipc_controller.h
-│   │   └── loop_functions/ # 
-│   └── zoo/                # Python package for the PettingZoo environment
-│       ├── argos_env.py    # PettingZoo parallel env (batched REQ/REP client, compact schema support)
-│       ├── test_env.py     # Script to test the environment
-│       └── zmq_client.py   # ZeroMQ client for connecting to ARGoS
-└── tests/                  # Tests for the Python components
-    └── test_example.py
+│   │   └── loop_functions/
+│   │       ├── CMakeLists.txt
+│   │       ├── zoo_loop_functions.cpp  # Central REP socket, batched observations
+│   │       └── zoo_loop_functions.h
+│   └── zoo/                    # Python package for the PettingZoo environment
+│       ├── argos_env.py        # PettingZoo parallel env (batched REQ/REP client, compact schema support)
+│       ├── zmq_client.py       # ZeroMQ client for connecting to ARGoS
+│       ├── logging_utils.py    # Logging utilities
+│       └── scenarios/          # Task-specific reward/metric callbacks
+│           └── aggregation.py  # Aggregation scenario reward function
+└── tests/                      # Tests for the Python components
+    ├── conftest.py             # Pytest fixtures and configuration
+    ├── test_env.py             # Environment integration tests
+    ├── test_metrics_reward.py  # Reward function unit tests
+    ├── test_logging.py         # Logging tests
+    ├── test_parallel_api.py    # PettingZoo parallel API compliance tests
+    ├── test_seed_layout.py     # Seed determinism tests
+    ├── test_seed_positions_multi.py  # Multi-agent seed position tests
+    ├── test_timeout_recovery.py      # Timeout and recovery tests
+    ├── test_graceful_shutdown.py     # Graceful shutdown tests
+    ├── test_legacy_removal.py        # Legacy code removal tests
+    └── test_reward_variance.py       # Reward variance tests
 ```
 
 ## Developer Guide (FUP-13)
@@ -296,3 +336,450 @@ Preliminary single-process benchmarks (MacBook Pro M1, experiment running on 20H
 - min_ms: Shortest measured step latency (ms).  
 - max_ms: Longest measured step latency (ms).  
 - payload_kb: Average size of the transmitted sensor data per tick (in kilobytes, proximity arrays only, JSON-serialized).
+
+---
+
+## Integration Reference
+
+This section provides the complete technical specification required to integrate the ARGoS-PettingZoo bridge into external systems.
+
+### Dependencies
+
+#### System Requirements
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| Python | 3.10+ | Tested on 3.11, 3.12, 3.13 |
+| ARGoS3 | 3.0.0-beta59+ | `brew install argos3` on macOS |
+| CMake | 3.15+ | For building C++ plugin |
+| ZeroMQ | 4.3+ | C++ library: `brew install zeromq` |
+
+#### Python Dependencies
+
+```
+pyzmq>=25.0.0      # ZeroMQ Python bindings
+pettingzoo>=1.24.0 # Multi-agent environment API
+gymnasium>=0.29.0  # Gymnasium spaces (Box, Discrete, Dict)
+numpy>=1.24.0      # Array operations
+psutil>=5.9.0      # Process management (optional, for tests)
+pytest>=7.0.0      # Testing (dev only)
+flake8>=6.0.0      # Linting (dev only)
+```
+
+#### C++ Dependencies
+
+- **nlohmann/json**: Single-header JSON library (`src/plugin/common/json.hpp`)
+- **cppzmq**: ZeroMQ C++ bindings (header-only, included with zeromq)
+
+### Python API Reference
+
+#### `ArgosEnv` Constructor
+
+```python
+from zoo.argos_env import ArgosEnv
+
+env = ArgosEnv(
+    argos_file: str,                    # Path to .argos configuration file (required)
+    expected_num_agents: int | None = None,  # Validation: raise if agent count differs
+    startup_delay: float = 3.0,         # Seconds to wait for simulator startup
+    max_steps: int = 1000,              # Episode truncation limit
+    client_timeout_ms: int = 5000,      # ZMQ request timeout before recovery
+    log_level: str = "INFO",            # Python logger level: DEBUG|INFO|WARN|ERROR
+    log_format: str = "text",           # Log format: "text" or "json"
+    quiet: bool = False,                # If True, sets log_level to ERROR
+    controller_log_level: str | None = None,  # Sets ARGOS_CONTROLLER_LOG_LEVEL env var
+    loop_log_level: str | None = None,  # Sets ARGOS_LOOP_LOG_LEVEL env var
+    reward_fn: Callable | None = None,  # Custom reward callback (see §4 Reward & Metrics)
+    port: int | None = None,            # Explicit ZMQ port (default: auto-select)
+    port_base: int = 5555,              # Base port for auto-selection fallback
+    port_env_vars: tuple = ("ARGOS_ZMQ_PORT", "ZOO_ZMQ_PORT", "ZMQ_PORT"),
+)
+```
+
+#### `reset()` Method
+
+```python
+def reset(
+    self,
+    seed: int | None = None,    # RNG seed; triggers simulator restart if changed
+    options: dict | None = None # Optional: {"max_steps": int} to override episode length
+) -> tuple[dict[str, dict], dict[str, dict]]:
+    """
+    Returns:
+        observations: {agent_id: {"proximity": ndarray(24,), "position": ndarray(3,)}, ...}
+        infos: {agent_id: {"metrics": {"reward": 0.0}}, ...}
+    """
+```
+
+#### `step()` Method
+
+```python
+def step(
+    self,
+    actions: dict[str, int | str]  # {agent_id: action_index_or_name, ...}
+) -> tuple[
+    dict[str, dict],    # observations
+    dict[str, float],   # rewards
+    dict[str, bool],    # terminations (always False; no terminal states)
+    dict[str, bool],    # truncations (True when timestep >= max_steps)
+    dict[str, dict],    # infos with metrics
+]:
+```
+
+#### `close()` Method
+
+```python
+def close(self) -> None:
+    """Gracefully terminate simulator subprocess and release resources.
+    Idempotent: safe to call multiple times.
+    """
+```
+
+#### Helper Methods
+
+```python
+def observation_space(self, agent: str) -> gymnasium.spaces.Dict
+def action_space(self, agent: str) -> gymnasium.spaces.Discrete
+def get_last_positions(self) -> list[list[float]] | None  # Raw positions from last reply
+def validate_observation_spaces(self) -> bool  # Runtime shape validation
+```
+
+### Gymnasium Spaces
+
+#### Observation Space
+
+```python
+gymnasium.spaces.Dict({
+    "position": gymnasium.spaces.Box(
+        low=-np.inf,
+        high=np.inf,
+        shape=(3,),
+        dtype=np.float32
+    ),
+    "proximity": gymnasium.spaces.Box(
+        low=0.0,
+        high=1.0,
+        shape=(24,),
+        dtype=np.float32
+    )
+})
+```
+
+- **position**: Robot's 3D coordinates `[x, y, z]` in arena frame (meters)
+- **proximity**: 24 infrared proximity sensor readings, normalized to `[0, 1]` where:
+  - `0.0` = no obstacle detected
+  - `1.0` = obstacle at minimum range
+  - Sensors arranged radially around the robot body at 15° intervals
+
+#### Action Space
+
+```python
+gymnasium.spaces.Discrete(5)
+```
+
+| Index | Name | Wire Command | Behavior |
+|-------|------|--------------|----------|
+| 0 | `stop` | `stop` | Halt both wheels |
+| 1 | `forward` | `forward_speed` | Both wheels forward (10 cm/s default) |
+| 2 | `backward` | `backward_speed` | Both wheels backward |
+| 3 | `turn_left` | `left_speed` | Differential turn left (on-spot rotation) |
+| 4 | `turn_right` | `right_speed` | Differential turn right |
+
+### Wire Protocol Specification
+
+All communication uses JSON over ZeroMQ REQ/REP sockets on TCP.
+
+#### Request Format (Python → C++)
+
+```json
+{
+  "command": "<command_name>",
+  "payload": { ... }
+}
+```
+
+#### Commands
+
+**`ping`** - Connection health check / handshake
+```json
+// Request
+{"command": "ping", "payload": {"t": 0}}
+
+// Response
+{"observations": {"schema": "compact_v1", "agents": [...], "proximity": [...], "position": [...]}}
+```
+
+**`reset`** - Reset simulation to initial state
+```json
+// Request
+{"command": "reset", "payload": {}}
+
+// Response
+{"observations": {"schema": "compact_v1", "agents": ["robot_0", ...], "proximity": [[...], ...], "position": [[x,y,z], ...]}}
+```
+
+**`step`** - Execute one simulation tick with given actions
+```json
+// Request
+{
+  "command": "step",
+  "payload": {
+    "actions": {
+      "robot_0": "forward_speed",
+      "robot_1": "left_speed",
+      "robot_2": "stop"
+    }
+  }
+}
+
+// Response
+{
+  "observations": {
+    "schema": "compact_v1",
+    "agents": ["robot_0", "robot_1", "robot_2"],
+    "proximity": [
+      [0.0, 0.0, 0.1, ..., 0.0],  // 24 floats per agent
+      [0.0, 0.2, 0.0, ..., 0.0],
+      [0.0, 0.0, 0.0, ..., 0.3]
+    ],
+    "position": [
+      [1.2, 0.5, 0.0],  // [x, y, z] per agent
+      [-0.3, 1.1, 0.0],
+      [0.0, 0.0, 0.0]
+    ]
+  }
+}
+```
+
+**`close`** - Signal shutdown (no response expected)
+```json
+{"command": "close", "payload": {}}
+```
+
+**`set_loop_log_level:<LEVEL>`** - Dynamically change C++ log verbosity
+```json
+{"command": "set_loop_log_level:DEBUG", "payload": {}}
+```
+
+### ARGoS Configuration Guide
+
+The `.argos` XML configuration must include specific elements for the bridge to function.
+
+#### Minimal Configuration Template
+
+```xml
+<?xml version="1.0" ?>
+<argos-configuration>
+  <framework>
+    <system threads="0" />
+    <experiment length="0" ticks_per_second="50" random_seed="123" />
+  </framework>
+
+  <!-- Controller plugin registration -->
+  <controllers>
+    <my_ipc_controller id="ipc" library="build/src/plugin/controllers/libmy_ipc_controller.dylib">
+      <actuators>
+        <differential_steering implementation="default" />
+      </actuators>
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="false" />
+      </sensors>
+      <params />
+    </my_ipc_controller>
+  </controllers>
+
+  <!-- Loop functions with ZMQ server -->
+  <loop_functions
+    library="build/src/plugin/loop_functions/libzoo_loop_functions.dylib"
+    label="zoo_loop_functions">
+    <params zmq_port="5555" />
+  </loop_functions>
+
+  <!-- Arena with robots -->
+  <arena size="6,6,1" center="0,0,0.5">
+    <foot-bot id="fb_0">
+      <body position="0,0,0" orientation="0,0,0" />
+      <controller config="ipc" />
+    </foot-bot>
+    <!-- Add more foot-bot elements as needed -->
+  </arena>
+
+  <physics_engines>
+    <dynamics2d id="dyn2d" />
+  </physics_engines>
+
+  <media />
+</argos-configuration>
+```
+
+#### Key Configuration Elements
+
+| Element | Attribute | Description |
+|---------|-----------|-------------|
+| `<experiment>` | `random_seed` | RNG seed (overwritten by `env.reset(seed=...)`) |
+| `<experiment>` | `ticks_per_second` | Simulation frequency (50 = 20ms per tick) |
+| `<experiment>` | `length` | Set to `0` for infinite (Python controls termination) |
+| `<my_ipc_controller>` | `library` | Path to compiled controller `.dylib`/`.so` |
+| `<loop_functions>` | `library` | Path to compiled loop functions `.dylib`/`.so` |
+| `<loop_functions>/<params>` | `zmq_port` | ZMQ server port (can also use env var) |
+| `<foot-bot>` | `id` | Robot identifier (mapped to `robot_N` internally) |
+
+#### Visual vs Headless Configurations
+
+- **Headless** (training): Omit `<visualization>` section entirely
+- **Visual** (debugging): Add ARGoS Qt-OpenGL visualization:
+
+```xml
+<visualization>
+  <qt-opengl>
+    <camera>
+      <placements>
+        <placement index="0" position="0,0,8" look_at="0,0,0" up="0,1,0" />
+      </placements>
+    </camera>
+  </qt-opengl>
+</visualization>
+```
+
+### Environment Variables Reference
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ARGOS_ZMQ_PORT` | `5555` | ZMQ port for Python↔C++ communication |
+| `ZOO_ZMQ_PORT` | - | Alternative port variable (fallback) |
+| `ZMQ_PORT` | - | Alternative port variable (fallback) |
+| `ARGOS_ZMQ_PORT_BASE` | `5555` | Base port for auto-selection when not specified |
+| `ARGOS_LOOP_LOG_LEVEL` | `INFO` | C++ loop functions log level: DEBUG\|INFO\|WARN\|ERROR |
+| `ARGOS_CONTROLLER_LOG_LEVEL` | `INFO` | C++ controller log level: DEBUG\|INFO\|WARN\|ERROR |
+
+Port resolution priority:
+1. Explicit `port=` constructor argument
+2. `ARGOS_ZMQ_PORT` environment variable
+3. `ZOO_ZMQ_PORT` environment variable
+4. `ZMQ_PORT` environment variable
+5. Auto-select free port (OS ephemeral or probe from `port_base`)
+
+### PettingZoo API Compliance
+
+`ArgosEnv` implements the **PettingZoo Parallel API**:
+
+```python
+from pettingzoo import ParallelEnv
+
+class ArgosEnv(ParallelEnv):
+    metadata = {"render_modes": ["human"], "name": "argos_v0"}
+
+    # Required attributes
+    possible_agents: list[str]      # All agent IDs (set after first reset)
+    agents: list[str]               # Currently active agents
+    agent_name_mapping: dict        # {agent_id: index}
+
+    # Required methods
+    def reset(seed, options) -> (observations, infos)
+    def step(actions) -> (observations, rewards, terminations, truncations, infos)
+    def observation_space(agent) -> Space
+    def action_space(agent) -> Space
+    def close() -> None
+```
+
+**Compatibility notes:**
+- All agents share identical observation and action spaces
+- No agent termination during episode (only truncation at `max_steps`)
+- Rewards computed externally via `reward_fn` callback
+- Supports `env.unwrapped` access pattern
+
+### Build Instructions
+
+#### macOS (Apple Silicon / Intel)
+
+```bash
+# 1. Install system dependencies
+brew install argos3 zeromq cmake
+
+# 2. Clone and enter repository
+git clone <repository_url>
+cd ArgosToZoo
+
+# 3. Create Python virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install numpy gymnasium  # If not in requirements.txt
+
+# 4. Build C++ plugins
+rm -rf build && mkdir build && cd build
+cmake ..
+make
+cd ..
+
+# 5. Verify installation
+PYTHONPATH=src python -c "from zoo.argos_env import ArgosEnv; print('OK')"
+```
+
+#### Linux (Ubuntu/Debian)
+
+```bash
+# Install ARGoS from source or PPA (see argos3 documentation)
+# Install ZeroMQ: apt install libzmq3-dev
+# Follow same build steps as macOS
+```
+
+### Quick Start Example
+
+```python
+import numpy as np
+from zoo.argos_env import ArgosEnv
+from zoo.scenarios.aggregation import aggregation_reward
+
+# Create environment with aggregation reward
+env = ArgosEnv(
+    argos_file="experiments/footbot_10.argos",
+    max_steps=500,
+    reward_fn=aggregation_reward,
+    quiet=True,
+)
+
+# Run one episode
+obs, infos = env.reset(seed=42)
+total_reward = 0.0
+
+for step in range(500):
+    # Random policy
+    actions = {agent: env.action_space(agent).sample() for agent in env.agents}
+    obs, rewards, terms, truncs, infos = env.step(actions)
+    total_reward += sum(rewards.values())
+
+    if all(truncs.values()):
+        break
+
+print(f"Episode reward: {total_reward:.2f}")
+env.close()
+```
+
+### Integration with RLlib
+
+```python
+from ray.rllib.env import PettingZooEnv
+from ray.rllib.algorithms.ppo import PPOConfig
+from zoo.argos_env import ArgosEnv
+from zoo.scenarios.aggregation import aggregation_reward
+
+def env_creator(config):
+    return ArgosEnv(
+        argos_file=config.get("argos_file", "experiments/footbot_10.argos"),
+        max_steps=config.get("max_steps", 500),
+        reward_fn=aggregation_reward,
+        quiet=True,
+    )
+
+# Register and train
+from ray.tune.registry import register_env
+register_env("argos_aggregation", lambda cfg: PettingZooEnv(env_creator(cfg)))
+
+config = (
+    PPOConfig()
+    .environment("argos_aggregation", env_config={"max_steps": 500})
+    .framework("torch")
+)
+algo = config.build()
+```
