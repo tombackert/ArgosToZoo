@@ -1,0 +1,96 @@
+<?xml version="1.0" ?>
+<argos-configuration>
+
+  <!-- ************************* -->
+  <!-- * General configuration * -->
+  <!-- ************************* -->
+  <framework>
+    <system threads="0" />
+    <experiment length="0"
+                ticks_per_second="10"
+                random_seed="42" />
+  </framework>
+
+  <!-- *************** -->
+  <!-- * Controllers * -->
+  <!-- *************** -->
+  <controllers>
+    <my_ipc_controller id="ipc_ctrl"
+                       library="build/src/plugin/controllers/libmy_ipc_controller.dylib">
+      <actuators>
+        <differential_steering implementation="default" />
+        <leds implementation="default" medium="leds" />
+      </actuators>
+      <sensors>
+        <footbot_proximity implementation="default" show_rays="false" />
+        <positioning implementation="default" />
+      </sensors>
+      <params />
+    </my_ipc_controller>
+  </controllers>
+
+  <!-- ****************** -->
+  <!-- * Loop functions * -->
+  <!-- ****************** -->
+  <loop_functions library="build/src/plugin/loop_functions/libzoo_loop_functions.dylib"
+                  label="zoo_loop_functions">
+    <params zmq_port="5555" />
+  </loop_functions>
+
+  <!-- *********************** -->
+  <!-- * Arena configuration * -->
+  <!-- *********************** -->
+  <arena size="5, 5, 1" center="0,0,0.5">
+
+    <!-- Floor -->
+    <floor id="floor"
+           source="loop_functions"
+           pixels_per_meter="50" />
+
+    <!-- Walls -->
+    <box id="wall_north" size="4,0.1,0.5" movable="false">
+      <body position="0,2,0" orientation="0,0,0" />
+    </box>
+    <box id="wall_south" size="4,0.1,0.5" movable="false">
+      <body position="0,-2,0" orientation="0,0,0" />
+    </box>
+    <box id="wall_east" size="0.1,4,0.5" movable="false">
+      <body position="2,0,0" orientation="0,0,0" />
+    </box>
+    <box id="wall_west" size="0.1,4,0.5" movable="false">
+      <body position="-2,0,0" orientation="0,0,0" />
+    </box>
+
+    <!-- Distribute footbots -->
+    <distribute>
+      <position method="uniform" min="-1.5,-1.5,0" max="1.5,1.5,0" />
+      <orientation method="uniform" min="0,0,0" max="360,0,0" />
+      <entity quantity="10" max_trials="100">
+        <foot-bot id="robot">
+          <controller config="ipc_ctrl" />
+        </foot-bot>
+      </entity>
+    </distribute>
+
+  </arena>
+
+  <!-- ******************* -->
+  <!-- * Physics engines * -->
+  <!-- ******************* -->
+  <physics_engines>
+    <dynamics2d id="dyn2d" />
+  </physics_engines>
+
+  <!-- ********* -->
+  <!-- * Media * -->
+  <!-- ********* -->
+  <media>
+    <led id="leds" />
+  </media>
+
+  <!-- ****************** -->
+  <!-- * Visualization * -->
+  <!-- ****************** -->
+  <visualization />
+
+</argos-configuration>
