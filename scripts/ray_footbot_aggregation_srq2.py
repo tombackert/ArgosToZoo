@@ -11,6 +11,7 @@ Outputs:
     results/aggregation_srq2/checkpoints/final/  — final checkpoint
 """
 
+import datetime
 import os
 from pathlib import Path
 
@@ -25,9 +26,9 @@ from zoo.scenarios.aggregation import aggregation_reward
 
 
 ARGOS_FILE = "experiments/footbot_aggregation_srq2.argos"
-NUM_AGENTS = 10
+NUM_AGENTS = 5
 ITERATIONS = 10
-OUTPUT_DIR = "results/aggregation_srq2"
+OUTPUT_DIR = f"results/aggregation_srq2_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
 
 def env_creator(env_config: dict) -> ParallelPettingZooEnv:
