@@ -27,7 +27,7 @@ from zoo.scenarios.aggregation import aggregation_reward
 
 ARGOS_FILE = "experiments/footbot_aggregation_srq2.argos"
 NUM_AGENTS = 5
-ITERATIONS = 10
+ITERATIONS = 5
 OUTPUT_DIR = f"results/aggregation_srq2_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
 
