@@ -1,14 +1,15 @@
-"""SRQ2 manual baseline training script.
+"""SRQ5 manual baseline training script.
 
-Standalone PPO training for the aggregation task matching marl-platform's
-aggregation.py hyperparameters exactly, for a fair efficiency comparison.
+Standalone PPO training for the aggregation task used in the SRQ5 collaboration
+experiment. Researcher A runs this to produce the reference results, which are
+then shared manually with Researcher B for reproduction.
 
 Usage:
-    PYTHONPATH=src python scripts/ray_footbot_aggregation_srq2.py
+    PYTHONPATH=src python scripts/ray_footbot_aggregation_srq5.py
 
 Outputs:
-    results/aggregation_srq2/tensorboard/   — TensorBoard logs
-    results/aggregation_srq2/checkpoints/final/  — final checkpoint
+    results/aggregation_srq5_<TIMESTAMP>/tensorboard/   — TensorBoard logs
+    results/aggregation_srq5_<TIMESTAMP>/checkpoints/final/  — final checkpoint
 """
 
 import datetime
@@ -25,11 +26,11 @@ from zoo.argos_env import ArgosEnv
 from zoo.scenarios.aggregation import aggregation_reward
 
 
-ARGOS_FILE = "experiments/footbot_aggregation_srq2.argos"
+ARGOS_FILE = "experiments/footbot_aggregation_srq5.argos"
 NUM_AGENTS = 5
 ITERATIONS = 5
 OUTPUT_DIR = (
-    f"results/aggregation_srq2_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    f"results/aggregation_srq5_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
 )
 
 
@@ -63,7 +64,7 @@ if __name__ == "__main__":
     os.environ.setdefault("RAY_DISABLE_MEMORY_MONITOR", "1")
     ray.init()
 
-    env_name = "aggregation_srq2"
+    env_name = "aggregation_srq5"
     register_env(env_name, env_creator)
 
     # Resolve output paths relative to repo root
